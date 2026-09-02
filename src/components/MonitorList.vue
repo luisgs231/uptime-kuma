@@ -1,6 +1,6 @@
 <template>
     <div class="shadow-box mb-3 p-0" :style="boxStyle">
-        <div class="list-header">
+        <div ref="listHeader" class="list-header">
             <!-- Line 1: Checkbox + Status + Tags + Search Bar -->
             <div class="filter-row">
                 <div class="search-wrapper">
@@ -161,6 +161,7 @@ export default {
                 tags: null,
             },
             collapseKey: 0,
+            listHeaderHeight: 68,
         };
     },
     computed: {
@@ -171,15 +172,14 @@ export default {
          * @returns {object} Style for monitor list
          */
         boxStyle() {
-            if (window.innerWidth > 550) {
+            if (this.$root.isMobile) {
                 return {
-                    height: `calc(100vh - 160px + ${this.windowTop}px)`,
-                };
-            } else {
-                return {
-                    height: "calc(100vh - 160px)",
+                    height: "calc(100vh - 160px - env(safe-area-inset-bottom))",
                 };
             }
+            return {
+                height: `calc(100vh - 160px + ${this.windowTop}px)`,
+            };
         },
 
         /**
@@ -209,17 +209,8 @@ export default {
         },
 
         monitorListStyle() {
-            // The header height has to be changed in case it is modified in the future.
-            // +10px is the margin-bottom of the header
-            let listHeaderHeight = 58 + 10;
-
-            // Only add extra height when selection row is visible
-            if (this.selectMode && this.selectedMonitorCount > 0) {
-                listHeaderHeight += 42;
-            }
-
             return {
-                height: `calc(100% - ${listHeaderHeight}px)`,
+                height: `calc(100% - ${this.listHeaderHeight + 10}px)`,
             };
         },
 
@@ -307,11 +298,32 @@ export default {
     },
     mounted() {
         window.addEventListener("scroll", this.onScroll);
+        this.measureListHeader();
+
+        if (typeof ResizeObserver !== "undefined") {
+            this.headerObserver = new ResizeObserver(this.measureListHeader);
+            this.headerObserver.observe(this.$refs.listHeader);
+        }
     },
     beforeUnmount() {
         window.removeEventListener("scroll", this.onScroll);
+        if (this.headerObserver) {
+            this.headerObserver.disconnect();
+            this.headerObserver = null;
+        }
     },
     methods: {
+        /**
+         * Record how much room the filter header is taking up.
+         * @returns {void}
+         */
+        measureListHeader() {
+            const header = this.$refs.listHeader;
+            if (header) {
+                this.listHeaderHeight = header.getBoundingClientRect().height;
+            }
+        },
+
         /**
          * Handle user scroll
          * @returns {void}

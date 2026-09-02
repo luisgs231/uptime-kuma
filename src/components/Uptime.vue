@@ -4,6 +4,7 @@
 
 <script>
 import { DOWN, MAINTENANCE, PENDING, UP } from "../util.ts";
+import { heartbeatStatusMeta } from "../monitor-status.ts";
 
 export default {
     props: {
@@ -48,6 +49,12 @@ export default {
         color() {
             if (this.lastHeartBeat.status === MAINTENANCE) {
                 return "maintenance";
+            }
+
+            // A monitor type with statuses of its own names its own colour.
+            const own = heartbeatStatusMeta(this.monitor?.type, this.lastHeartBeat);
+            if (own) {
+                return own.color;
             }
 
             if (this.lastHeartBeat.status === DOWN) {

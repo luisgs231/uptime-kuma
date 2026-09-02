@@ -37,7 +37,7 @@
                     </a>
                 </div>
                 <div class="settings-content col-lg-9 col-md-7">
-                    <div v-if="currentPage" class="settings-content-header">
+                    <div v-if="currentPage && subMenus[currentPage]" class="settings-content-header">
                         {{ subMenus[currentPage].title }}
                     </div>
                     <div class="mx-3">
@@ -94,9 +94,13 @@ export default {
                 notifications: {
                     title: this.$t("Notifications"),
                 },
-                "reverse-proxy": {
-                    title: this.$t("Reverse Proxy"),
-                },
+                ...(this.$root.isAdmin
+                    ? {
+                        "reverse-proxy": {
+                            title: this.$t("Reverse Proxy"),
+                        },
+                    }
+                    : {}),
                 tags: {
                     title: this.$t("Tags"),
                 },
@@ -118,6 +122,13 @@ export default {
                 proxies: {
                     title: this.$t("Proxies"),
                 },
+                ...(this.$root.isAdmin
+                    ? {
+                        users: {
+                            title: "Users",
+                        },
+                    }
+                    : {}),
                 about: {
                     title: this.$t("About"),
                 },
@@ -166,6 +177,10 @@ export default {
 
                 if (this.settings.entryPage === undefined) {
                     this.settings.entryPage = "dashboard";
+                }
+
+                if (this.settings.landingPage === undefined) {
+                    this.settings.landingPage = "dashboard";
                 }
 
                 if (this.settings.nscd === undefined) {

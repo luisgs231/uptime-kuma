@@ -76,9 +76,15 @@
                                     {{ $root.monitorList[beat.monitorID]?.name }}
                                 </router-link>
                             </td>
-                            <td><Status :status="beat.status" /></td>
+                            <td>
+                                <Status
+                                    :status="beat.status"
+                                    :type="$root.monitorList[beat.monitorID]?.type"
+                                    :beat="beat"
+                                />
+                            </td>
                             <td :class="{ 'border-0': !beat.msg }"><Datetime :value="beat.time" /></td>
-                            <td class="border-0">{{ beat.msg }}</td>
+                            <td class="border-0">{{ beatMessage(beat) }}</td>
                         </tr>
 
                         <tr v-if="importantHeartBeatListLength === 0">
@@ -117,6 +123,7 @@ import Status from "../components/Status.vue";
 import Datetime from "../components/Datetime.vue";
 import Pagination from "v-pagination-3";
 import Confirm from "../components/Confirm.vue";
+import { heartbeatStatusMeta, stripStatusPrefix } from "../monitor-status.ts";
 
 export default {
     components: {
@@ -183,6 +190,16 @@ export default {
     },
 
     methods: {
+        /**
+         * The message of a heartbeat, without the status it starts with.
+         * @param {object} beat A heartbeat
+         * @returns {string} The message to show
+         */
+        beatMessage(beat) {
+            const type = this.$root.monitorList[beat.monitorID]?.type;
+            return heartbeatStatusMeta(type, beat) ? stripStatusPrefix(beat.msg) : beat.msg;
+        },
+
         /**
          * Returns the group (parent) name for a monitor, or empty string if none.
          * @param {number} monitorID - The monitor ID.

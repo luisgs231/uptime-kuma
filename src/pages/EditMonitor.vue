@@ -98,6 +98,22 @@
                                     </optgroup>
 
                                     <!-- Should sort from A to Z in this category -->
+                                    <!--
+                                        Kept in their own group rather than added to "Specific
+                                        Monitor Type". That group contains options behind
+                                        v-if="!$root.info.isContainer", and $root.info arrives
+                                        asynchronously over the socket. Static options placed
+                                        before those change how Vue aligns the un-keyed children
+                                        when that patch runs, so it replaces more option nodes
+                                        than it needs to - which closes an open native select
+                                        popup and reopens it under the cursor.
+                                    -->
+                                    <optgroup label="Mail &amp; Failover">
+                                        <option value="dmarc">DMARC</option>
+                                        <option value="rbl">Blocklist (RBL)</option>
+                                        <option value="carp">CARP failover</option>
+                                    </optgroup>
+
                                     <optgroup :label="$t('monitorTypeDatabase')">
                                         <option value="sqlserver">Microsoft SQL Server</option>
                                         <option value="mongodb">MongoDB</option>
@@ -857,6 +873,15 @@
                                     </i18n-t>
                                 </div>
                             </template>
+
+                            <!-- DMARC Configuration -->
+                            <DmarcMonitorForm v-if="monitor.type === 'dmarc'" v-model="monitor" />
+
+                            <!-- Blocklist Configuration -->
+                            <RblMonitorForm v-if="monitor.type === 'rbl'" v-model="monitor" />
+
+                            <!-- CARP Configuration -->
+                            <CarpMonitorForm v-if="monitor.type === 'carp'" v-model="monitor" />
 
                             <!-- NTP Configuration -->
                             <template v-if="monitor.type === 'ntp'">
@@ -3254,6 +3279,9 @@ import isFQDN from "validator/lib/isFQDN";
 import isIP from "validator/lib/isIP";
 import HiddenInput from "../components/HiddenInput.vue";
 import EditMonitorConditions from "../components/EditMonitorConditions.vue";
+import DmarcMonitorForm from "../components/DmarcMonitorForm.vue";
+import RblMonitorForm from "../components/RblMonitorForm.vue";
+import CarpMonitorForm from "../components/CarpMonitorForm.vue";
 
 const toast = useToast();
 
@@ -3348,6 +3376,9 @@ export default {
         TagsManager,
         VueMultiselect,
         EditMonitorConditions,
+        DmarcMonitorForm,
+        RblMonitorForm,
+        CarpMonitorForm,
     },
 
     data() {

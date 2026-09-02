@@ -45,6 +45,7 @@ import {
 import "chartjs-adapter-dayjs-4";
 import { Line } from "vue-chartjs";
 import { UP, DOWN, PENDING, MAINTENANCE } from "../util.ts";
+import { heartbeatStatusMeta } from "../monitor-status.ts";
 
 Chart.register(
     LineController,
@@ -396,15 +397,28 @@ export default {
                     x,
                     y: beat.status === DOWN || beat.status === MAINTENANCE || beat.status === PENDING ? 1 : 0,
                 });
-                switch (beat.status) {
-                    case MAINTENANCE:
-                        colorData.push("rgba(23 ,71, 245, 0.41)");
-                        break;
-                    case PENDING:
-                        colorData.push("rgba(245, 182, 23, 0.41)");
-                        break;
-                    default:
-                        colorData.push("rgba(220, 53, 69, 0.41)");
+                // Shaded by the status a monitor type reports for itself where
+                // it has one, so the band matches the bar above it.
+                const own = beat.status === MAINTENANCE
+                    ? null
+                    : heartbeatStatusMeta(this.$root.monitorList?.[this.monitorId]?.type, beat);
+
+                if (own) {
+                    colorData.push({
+                        warning: "rgba(245, 182, 23, 0.41)",
+                        secondary: "rgba(108, 117, 125, 0.41)",
+                    }[own.color] ?? "rgba(220, 53, 69, 0.41)");
+                } else {
+                    switch (beat.status) {
+                        case MAINTENANCE:
+                            colorData.push("rgba(23 ,71, 245, 0.41)");
+                            break;
+                        case PENDING:
+                            colorData.push("rgba(245, 182, 23, 0.41)");
+                            break;
+                        default:
+                            colorData.push("rgba(220, 53, 69, 0.41)");
+                    }
                 }
 
                 lastHeartbeatTime = beatTime;

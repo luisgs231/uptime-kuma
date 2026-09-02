@@ -7,6 +7,7 @@ const { UptimeKumaServer } = require("./uptime-kuma-server");
 const server = UptimeKumaServer.getInstance();
 const io = server.io;
 const { setting } = require("./util-server");
+const { UserSettings } = require("./user-settings");
 const checkVersion = require("./check-version");
 const Database = require("./database");
 
@@ -113,6 +114,25 @@ async function sendProxyList(socket) {
     timeLogger.print("Send Proxy List");
 
     return list;
+}
+
+/**
+ * Tell a client who it is logged in as.
+ * @param {Socket} socket Socket.io socket instance
+ * @returns {Promise<void>}
+ */
+async function sendCurrentUser(socket) {
+    const user = await R.findOne("user", " id = ? ", [ socket.userID ]);
+    if (!user) {
+        return;
+    }
+
+    socket.emit("currentUser", {
+        id: user.id,
+        username: user.username,
+        isAdmin: !!user.is_admin,
+        landingPage: await UserSettings.resolve(user.id, "landingPage"),
+    });
 }
 
 /**
@@ -236,6 +256,7 @@ async function sendMonitorTypeList(socket) {
 }
 
 module.exports = {
+    sendCurrentUser,
     sendNotificationList,
     sendImportantHeartbeatList,
     sendHeartbeatList,

@@ -103,8 +103,6 @@ log.debug("server", "Importing http-graceful-shutdown");
 const gracefulShutdown = require("http-graceful-shutdown");
 log.debug("server", "Importing prometheus-api-metrics");
 const prometheusAPIMetrics = require("prometheus-api-metrics");
-const { passwordStrength } = require("check-password-strength");
-const TranslatableError = require("./translatable-error");
 
 log.debug("server", "Importing 2FA Modules");
 const notp = require("notp");
@@ -179,6 +177,7 @@ const testMode = !!args["test"] || false;
 
 // Must be after io instantiation
 const {
+    sendCurrentUser,
     sendNotificationList,
     sendHeartbeatList,
     sendInfo,
@@ -204,11 +203,20 @@ const { maintenanceSocketHandler } = require("./socket-handlers/maintenance-sock
 const { apiKeySocketHandler } = require("./socket-handlers/api-key-socket-handler");
 const { generalSocketHandler } = require("./socket-handlers/general-socket-handler");
 const { Settings } = require("./settings");
+const { UserSettings } = require("./user-settings");
+const { buildRobotsTxt } = require("./robots");
+const { findOwned, requireOwnedTag, requireOwnedMonitor } = require("./ownership");
+const { USER_SETTINGS, USER_SETTING_DEFAULTS } = require("./setting-scope");
 const apicache = require("./modules/apicache");
 const { resetChrome } = require("./monitor-types/real-browser-monitor-type");
 const { EmbeddedMariaDB } = require("./embedded-mariadb");
 const { SetupDatabase } = require("./setup-database");
 const { chartSocketHandler } = require("./socket-handlers/chart-socket-handler");
+const { dmarcSocketHandler } = require("./socket-handlers/dmarc-socket-handler");
+const { userSocketHandler } = require("./socket-handlers/user-socket-handler");
+const { importSocketHandler } = require("./socket-handlers/import-socket-handler");
+const { serializeConfig: serializeDmarcConfig } = require("./dmarc/config");
+const { serializeConfig: serializeCarpConfig } = require("./monitor-types/carp");
 
 app.use(express.json());
 
@@ -340,12 +348,8 @@ let needSetup = false;
 
     // Robots.txt
     app.get("/robots.txt", async (_request, response) => {
-        let txt = "User-agent: *\nDisallow:";
-        if (!(await setting("searchEngineIndex"))) {
-            txt += " /";
-        }
         response.setHeader("Content-Type", "text/plain");
-        response.send(txt);
+        response.send(await buildRobotsTxt());
     });
 
     // Basic Auth Router here
@@ -704,10 +708,6 @@ let needSetup = false;
 
         socket.on("setup", async (username, password, callback) => {
             try {
-                if (passwordStrength(password).value === "Too weak") {
-                    throw new TranslatableError("passwordTooWeak");
-                }
-
                 if ((await R.knex("user").count("id as count").first()).count !== 0) {
                     throw new Error(
                         "Uptime Kuma has been initialized. If you want to run setup again, please delete the database."
@@ -717,6 +717,7 @@ let needSetup = false;
                 let user = R.dispense("user");
                 user.username = username;
                 user.password = await passwordHash.generate(password);
+                user.is_admin = true;
                 await R.store(user);
 
                 needSetup = false;
@@ -770,7 +771,13 @@ let needSetup = false;
                     "humanReadableInterval",
                     "globalpingdnsresolvetypeoptions",
                     "responsecheck",
+                    "dmarcConfig",
+                    "rblConfig",
+                    "carpConfig",
                 ];
+                const dmarcConfigInput = monitor.dmarcConfig;
+                const rblConfigInput = monitor.rblConfig;
+                const carpConfigInput = monitor.carpConfig;
                 for (const prop of frontendOnlyProperties) {
                     if (prop in monitor) {
                         delete monitor[prop];
@@ -778,6 +785,15 @@ let needSetup = false;
                 }
 
                 bean.import(monitor);
+                if (bean.type === "dmarc") {
+                    bean.dmarc_config = serializeDmarcConfig(dmarcConfigInput, null);
+                }
+                if (bean.type === "rbl") {
+                    bean.rbl_config = JSON.stringify(rblConfigInput || {});
+                }
+                if (bean.type === "carp") {
+                    bean.carp_config = serializeCarpConfig(carpConfigInput, null);
+                }
                 // Map camelCase frontend property to snake_case database column
                 if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
                     bean.retry_only_on_status_code_failure = monitor.retryOnlyOnStatusCodeFailure;
@@ -955,6 +971,16 @@ let needSetup = false;
                 bean.ntp_stratum_threshold = monitor.ntpStratumThreshold;
                 bean.ntp_time_offset_threshold = monitor.ntpTimeOffsetThreshold;
                 bean.ntp_root_dispersion_threshold = monitor.ntpRootDispersionThreshold;
+                if (bean.type === "dmarc") {
+                    bean.dmarc_config = serializeDmarcConfig(monitor.dmarcConfig, bean.dmarc_config);
+                    bean.dmarc_state = null;
+                }
+                if (bean.type === "rbl") {
+                    bean.rbl_config = JSON.stringify(monitor.rblConfig || {});
+                }
+                if (bean.type === "carp") {
+                    bean.carp_config = serializeCarpConfig(monitor.carpConfig, bean.carp_config);
+                }
 
                 // ping advanced options
                 bean.ping_numeric = monitor.ping_numeric;
@@ -1014,7 +1040,7 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                let monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                let monitor = await requireOwnedMonitor(monitorID, socket.userID);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
                 callback({
@@ -1055,6 +1081,8 @@ let needSetup = false;
                 checkLogin(socket);
 
                 log.info("monitor", `Get Monitor Beats: ${monitorID} User ID: ${socket.userID}`);
+
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 if (period == null) {
                     throw new Error("Invalid period.");
@@ -1218,7 +1246,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                const list = await R.findAll("tag");
+                const list = await R.find("tag", " user_id = ? ", [ socket.userID ]);
 
                 callback({
                     ok: true,
@@ -1237,6 +1265,7 @@ let needSetup = false;
                 checkLogin(socket);
 
                 let bean = R.dispense("tag");
+                bean.user_id = socket.userID;
                 bean.name = tag.name;
                 bean.color = tag.color;
                 await R.store(bean);
@@ -1257,7 +1286,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = await R.findOne("tag", " id = ? ", [tag.id]);
+                let bean = await findOwned("tag", tag.id, socket.userID);
                 if (bean == null) {
                     callback({
                         ok: false,
@@ -1288,7 +1317,8 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM tag WHERE id = ? ", [tagID]);
+                await requireOwnedTag(tagID, socket.userID);
+                await R.exec("DELETE FROM tag WHERE id = ? AND user_id = ? ", [ tagID, socket.userID ]);
 
                 callback({
                     ok: true,
@@ -1306,6 +1336,9 @@ let needSetup = false;
         socket.on("addMonitorTag", async (tagID, monitorID, value, callback) => {
             try {
                 checkLogin(socket);
+
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await R.exec("INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (?, ?, ?)", [
                     tagID,
@@ -1332,6 +1365,9 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
+
                 await R.exec("UPDATE monitor_tag SET value = ? WHERE tag_id = ? AND monitor_id = ?", [
                     value,
                     tagID,
@@ -1356,6 +1392,9 @@ let needSetup = false;
         socket.on("deleteMonitorTag", async (tagID, monitorID, value, callback) => {
             try {
                 checkLogin(socket);
+
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await R.exec("DELETE FROM monitor_tag WHERE tag_id = ? AND monitor_id = ? AND value = ?", [
                     tagID,
@@ -1384,8 +1423,13 @@ let needSetup = false;
 
                 let count;
                 if (monitorID == null) {
-                    count = await R.count("heartbeat", "important = 1");
+                    count = await R.count(
+                        "heartbeat",
+                        "important = 1 AND monitor_id IN (SELECT id FROM monitor WHERE user_id = ?)",
+                        [ socket.userID ]
+                    );
                 } else {
+                    await requireOwnedMonitor(monitorID, socket.userID);
                     count = await R.count("heartbeat", "monitor_id = ? AND important = 1", [monitorID]);
                 }
 
@@ -1407,17 +1451,20 @@ let needSetup = false;
 
                 let list;
                 if (monitorID == null) {
+                    // This account's events, not the instance's.
                     list = await R.find(
                         "heartbeat",
                         `
                         important = 1
+                        AND monitor_id IN (SELECT id FROM monitor WHERE user_id = ?)
                         ORDER BY time DESC
                         LIMIT ?
                         OFFSET ?
                     `,
-                        [count, offset]
+                        [ socket.userID, count, offset ]
                     );
                 } else {
+                    await requireOwnedMonitor(monitorID, socket.userID);
                     list = await R.find(
                         "heartbeat",
                         `
@@ -1451,10 +1498,6 @@ let needSetup = false;
                     throw new Error("Invalid new password");
                 }
 
-                if (passwordStrength(password.newPassword).value === "Too weak") {
-                    throw new TranslatableError("passwordTooWeak");
-                }
-
                 let user = await doubleCheckPassword(socket, password.currentPassword);
                 await user.resetPassword(password.newPassword);
 
@@ -1478,15 +1521,25 @@ let needSetup = false;
         socket.on("getSettings", async (callback) => {
             try {
                 checkLogin(socket);
-                const data = await getSettings("general");
 
-                if (!data.serverTimezone) {
+                const currentUser = await R.findOne("user", " id = ? AND active = 1 ", [ socket.userID ]);
+                const isAdmin = !!currentUser?.is_admin;
+
+                const data = isAdmin ? await getSettings("general") : {};
+
+                Object.assign(data, {
+                    ...USER_SETTING_DEFAULTS,
+                    ...(await UserSettings.getSettings(socket.userID)),
+                });
+
+                if (isAdmin && !data.serverTimezone) {
                     data.serverTimezone = await server.getTimezone();
                 }
 
                 callback({
                     ok: true,
                     data: data,
+                    isAdmin,
                 });
             } catch (e) {
                 callback({
@@ -1500,6 +1553,18 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
+                await UserSettings.setSettings(socket.userID, data, USER_SETTINGS);
+
+                const currentUser = await R.findOne("user", " id = ? AND active = 1 ", [ socket.userID ]);
+                if (!currentUser?.is_admin) {
+                    callback({
+                        ok: true,
+                        msg: "Saved.",
+                        msgi18n: true,
+                    });
+                    return;
+                }
+
                 // If currently is disabled auth, don't need to check
                 // Disabled Auth + Want to Disable Auth => No Check
                 // Disabled Auth + Want to Enable Auth => No Check
@@ -1507,6 +1572,12 @@ let needSetup = false;
                 // Enabled Auth + Want to Enable Auth => No Check
                 const currentDisabledAuth = await setting("disableAuth");
                 if (!currentDisabledAuth && data.disableAuth) {
+                    const accounts = await R.count("user", " active = 1 ");
+                    if (accounts > 1) {
+                        throw new Error(
+                            "Authentication cannot be disabled while more than one account exists."
+                        );
+                    }
                     await doubleCheckPassword(socket, currentPassword);
                 }
 
@@ -1661,6 +1732,7 @@ let needSetup = false;
 
                 log.info("manage", `Clear Events Monitor: ${monitorID} User ID: ${socket.userID}`);
 
+                await requireOwnedMonitor(monitorID, socket.userID);
                 await R.exec("UPDATE heartbeat SET msg = ?, important = ? WHERE monitor_id = ? ", ["", "0", monitorID]);
 
                 callback({
@@ -1679,6 +1751,8 @@ let needSetup = false;
                 checkLogin(socket);
 
                 log.info("manage", `Clear Heartbeats Monitor: ${monitorID} User ID: ${socket.userID}`);
+
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await UptimeCalculator.clearStatistics(monitorID);
 
@@ -1740,6 +1814,9 @@ let needSetup = false;
         remoteBrowserSocketHandler(socket);
         generalSocketHandler(socket, server);
         chartSocketHandler(socket);
+        dmarcSocketHandler(socket);
+        userSocketHandler(socket);
+        importSocketHandler(socket);
 
         log.debug("server", "added all socket handlers");
 
@@ -1832,6 +1909,7 @@ async function afterLogin(socket, user) {
     let monitorList = await server.sendMonitorList(socket);
     await Promise.allSettled([
         sendInfo(socket),
+        sendCurrentUser(socket),
         server.sendMaintenanceList(socket),
         sendNotificationList(socket),
         sendProxyList(socket),

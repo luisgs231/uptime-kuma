@@ -14,7 +14,7 @@
                         {{ statusText }}
                     </div>
                     <div class="tooltip-time">{{ timeText }}</div>
-                    <div v-if="content?.msg" class="tooltip-message">{{ content.msg }}</div>
+                    <div v-if="messageText" class="tooltip-message">{{ messageText }}</div>
                 </slot>
             </div>
             <div class="tooltip-arrow" :class="{ 'arrow-above': position === 'above' }"></div>
@@ -24,6 +24,7 @@
 
 <script>
 import { DOWN, UP, PENDING, MAINTENANCE } from "../util.ts";
+import { heartbeatStatusMeta, stripStatusPrefix } from "../monitor-status.ts";
 
 export default {
     name: "Tooltip",
@@ -36,6 +37,13 @@ export default {
         /** Content object to display */
         content: {
             type: Object,
+            default: null,
+        },
+        /**
+         * Type of the monitor the beat belongs to.
+         */
+        type: {
+            type: String,
             default: null,
         },
         /** X position (viewport coordinates) */
@@ -63,9 +71,35 @@ export default {
             };
         },
 
+        /**
+         * The monitor's own status for this beat, when it reports one.
+         * @returns {object|null} Label and colour, or null
+         */
+        ownStatus() {
+            if (!this.content || this.content === 0) {
+                return null;
+            }
+            return heartbeatStatusMeta(this.type, this.content);
+        },
+
+        /**
+         * The message, without the status it starts with.
+         * @returns {string} The message to show
+         */
+        messageText() {
+            if (!this.content?.msg) {
+                return "";
+            }
+            return this.ownStatus ? stripStatusPrefix(this.content.msg) : this.content.msg;
+        },
+
         statusText() {
             if (!this.content || this.content === 0) {
                 return this.$t("Unknown");
+            }
+
+            if (this.ownStatus) {
+                return this.ownStatus.label;
             }
 
             switch (this.content.status) {
@@ -85,6 +119,15 @@ export default {
         statusClass() {
             if (!this.content || this.content === 0) {
                 return "status-empty";
+            }
+
+            if (this.ownStatus) {
+                return {
+                    primary: "status-up",
+                    danger: "status-down",
+                    warning: "status-pending",
+                    maintenance: "status-maintenance",
+                }[this.ownStatus.color] ?? "status-unknown";
             }
 
             switch (this.content.status) {

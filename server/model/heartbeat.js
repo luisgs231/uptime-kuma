@@ -33,6 +33,7 @@ class Heartbeat extends BeanModel {
         return {
             monitorID: this._monitorId,
             status: this._status,
+            dmarcStatus: this._dmarcStatus,
             time: this._time,
             msg: this._msg,
             ping: this._ping,
@@ -52,6 +53,7 @@ class Heartbeat extends BeanModel {
         return {
             monitorID: this._monitorId,
             status: this._status,
+            dmarcStatus: this._dmarcStatus,
             time: this._time,
             msg: this._msg,
             ping: this._ping,

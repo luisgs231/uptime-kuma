@@ -366,7 +366,7 @@ class StatusPage extends BeanModel {
     static async sendStatusPageList(io, socket) {
         let result = {};
 
-        let list = await R.findAll("status_page", " ORDER BY title ");
+        let list = await R.find("status_page", " user_id = ? ORDER BY title ", [ socket.userID ]);
 
         for (let item of list) {
             result[item.id] = await item.toJSON();

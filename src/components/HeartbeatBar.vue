@@ -31,6 +31,7 @@
         <Tooltip
             :visible="tooltipVisible"
             :content="tooltipContent"
+            :type="monitorType"
             :x="tooltipX"
             :y="tooltipY"
             :position="tooltipPosition"
@@ -41,6 +42,7 @@
 <script>
 import dayjs from "dayjs";
 import { DOWN, UP, PENDING, MAINTENANCE } from "../util.ts";
+import { heartbeatStatusMeta } from "../monitor-status.ts";
 import Tooltip from "./Tooltip.vue";
 
 export default {
@@ -89,6 +91,14 @@ export default {
         };
     },
     computed: {
+        /**
+         * Type of the monitor these beats belong to.
+         * @returns {string|null} The monitor type, or null when it is not known
+         */
+        monitorType() {
+            return this.$root.monitorList?.[this.monitorId]?.type ?? null;
+        },
+
         /**
          * Normalized heartbeatBarDays as a number
          * @returns {number} Number of days for heartbeat bar
@@ -412,6 +422,18 @@ export default {
         },
 
         /**
+         * The status a monitor type reports for itself, if it has one.
+         * @param {object} beat Beat object
+         * @returns {object|null} The status meta, or null
+         */
+        ownStatus(beat) {
+            if (!beat || beat === 0 || Number(beat.status) === MAINTENANCE) {
+                return null;
+            }
+            return heartbeatStatusMeta(this.monitorType, beat);
+        },
+
+        /**
          * Get CSS classes for a beat element based on its status
          * @param {object} beat - Beat object containing status information
          * @returns {object} Object with CSS class names as keys and boolean values
@@ -422,6 +444,15 @@ export default {
             }
 
             const status = Number(beat.status);
+            const own = this.ownStatus(beat);
+
+            if (own) {
+                return {
+                    down: own.color === "danger",
+                    pending: own.color === "warning" || own.color === "secondary",
+                    maintenance: false,
+                };
+            }
 
             return {
                 down: status === DOWN,
@@ -436,6 +467,11 @@ export default {
          * @returns {string} Aria label
          */
         getBeatAriaLabel(beat) {
+            const own = this.ownStatus(beat);
+            if (own) {
+                return `${own.label} at ${this.$root.datetime(beat.time)}`;
+            }
+
             switch (beat?.status) {
                 case DOWN:
                     return `Down at ${this.$root.datetime(beat.time)}`;
@@ -565,6 +601,7 @@ export default {
                 pending: rootStyles.getPropertyValue("--bs-warning") || "#ffc107",
                 maintenance: rootStyles.getPropertyValue("--maintenance") || "#1d4ed8",
                 up: rootStyles.getPropertyValue("--bs-primary") || "#5cdd8b",
+                secondary: rootStyles.getPropertyValue("--bs-secondary") || "#6c757d",
             };
 
             // Draw each beat
@@ -643,6 +680,20 @@ export default {
             }
 
             const status = Number(beat.status);
+
+            // A monitor type with statuses of its own is coloured by the status
+            // it reported, not by the up/down carrying it. A beat recorded
+            // before a status changed colour then reads the way it reads now.
+            const own = this.ownStatus(beat);
+            if (own) {
+                return {
+                    primary: colors.up,
+                    success: colors.up,
+                    warning: colors.pending,
+                    danger: colors.down,
+                    secondary: colors.secondary,
+                }[own.color] ?? colors.up;
+            }
 
             if (status === DOWN) {
                 return colors.down;

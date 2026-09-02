@@ -158,7 +158,7 @@
                     <div class="col-md-4 text-center">
                         <span
                             class="badge rounded-pill"
-                            :class="'bg-' + status.color"
+                            :class="['bg-' + status.color, { 'own-status': status.own }]"
                             style="font-size: 30px"
                             data-testid="monitor-status"
                         >
@@ -325,6 +325,10 @@
                 </div>
             </div>
 
+            <DmarcSummary v-if="monitor.type === 'dmarc'" :monitor="monitor" />
+            <RblSummary v-if="monitor.type === 'rbl'" :monitor="monitor" />
+            <CarpSummary v-if="monitor.type === 'carp'" :monitor="monitor" />
+
             <div class="shadow-box table-shadow-box">
                 <div class="dropdown dropdown-clear-data">
                     <button
@@ -358,11 +362,11 @@
                     </thead>
                     <tbody>
                         <tr v-for="(beat, index) in displayedRecords" :key="index" style="padding: 10px">
-                            <td><Status :status="beat.status" /></td>
+                            <td><Status :status="beat.status" :type="monitor.type" :beat="beat" /></td>
                             <td :class="{ 'border-0': !beat.msg }">
                                 <Datetime :value="beat.time" />
                             </td>
-                            <td class="border-0">{{ beat.msg }}</td>
+                            <td class="border-0">{{ beatMessage(beat) }}</td>
                         </tr>
 
                         <tr v-if="importantHeartBeatListLength === 0">
@@ -450,7 +454,11 @@ import Pagination from "v-pagination-3";
 const PingChart = defineAsyncComponent(() => import("../components/PingChart.vue"));
 import Tag from "../components/Tag.vue";
 import CertificateInfo from "../components/CertificateInfo.vue";
+import DmarcSummary from "../components/DmarcSummary.vue";
+import RblSummary from "../components/RblSummary.vue";
+import CarpSummary from "../components/CarpSummary.vue";
 import { getMonitorRelativeURL } from "../util.ts";
+import { heartbeatStatusMeta, stripStatusPrefix } from "../monitor-status.ts";
 import { URL } from "whatwg-url";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -475,6 +483,9 @@ export default {
         PingChart,
         Tag,
         CertificateInfo,
+        DmarcSummary,
+        RblSummary,
+        CarpSummary,
         PrismEditor,
         ScreenshotDialog,
     },
@@ -641,6 +652,16 @@ export default {
 
     methods: {
         getResBaseURL,
+
+        /**
+         * The message of a heartbeat, without the status it starts with.
+         * @param {object} beat A heartbeat
+         * @returns {string} The message to show
+         */
+        beatMessage(beat) {
+            return heartbeatStatusMeta(this.monitor.type, beat) ? stripStatusPrefix(beat.msg) : beat.msg;
+        },
+
         /**
          * Request a test notification be sent for this monitor
          * @returns {void}
@@ -874,6 +895,10 @@ export default {
 
 .form-check {
     margin-top: 16px;
+}
+
+.badge.own-status.bg-warning {
+    color: $dark-font-color2;
 }
 
 @media (max-width: 767px) {

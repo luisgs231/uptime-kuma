@@ -15,6 +15,7 @@ const chardet = require("chardet");
 const chroma = require("chroma-js");
 const { NtlmClient } = require("./modules/axios-ntlm/lib/ntlmClient.js");
 const { Settings } = require("./settings");
+const { UserSettings } = require("./user-settings");
 const RadiusClient = require("./radius-client");
 const oidc = require("openid-client");
 const tls = require("tls");
@@ -648,6 +649,22 @@ exports.checkLogin = (socket) => {
 };
 
 /**
+ * Check that the logged-in user is an administrator.
+ * @param {Socket} socket Socket instance
+ * @returns {Promise<Bean>} The administrator's account
+ * @throws The user is not logged in, or is not an administrator
+ */
+exports.checkAdmin = async (socket) => {
+    exports.checkLogin(socket);
+
+    const user = await R.findOne("user", " id = ? AND active = 1 ", [ socket.userID ]);
+    if (!user || !user.is_admin) {
+        throw new Error("You do not have permission to do that.");
+    }
+    return user;
+};
+
+/**
  * For logged-in users, double-check the password
  * @param {Socket} socket Socket.io instance
  * @param {string} currentPassword Password to validate
@@ -937,7 +954,10 @@ async function checkCertExpiryNotifications(monitor, tlsInfoObject) {
         return;
     }
 
-    let notifyDays = await Settings.get("tlsExpiryNotifyDays");
+    let notifyDays = await UserSettings.get(monitor.user_id, "tlsExpiryNotifyDays");
+    if (notifyDays == null || !Array.isArray(notifyDays)) {
+        notifyDays = await Settings.get("tlsExpiryNotifyDays");
+    }
     if (notifyDays == null || !Array.isArray(notifyDays)) {
         // Reset Default
         await Settings.set("tlsExpiryNotifyDays", [7, 14, 21], "general");
