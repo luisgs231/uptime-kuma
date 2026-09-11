@@ -1,4 +1,5 @@
 const { checkLogin } = require("../util-server");
+const { requireOwnedMaintenance, requireAllOwned } = require("../ownership");
 const { log } = require("../../src/util");
 const { R } = require("redbean-node");
 const apicache = require("../modules/apicache");
@@ -78,6 +79,9 @@ module.exports.maintenanceSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
+            await requireAllOwned("monitor", (monitors || []).map((m) => m.id), socket.userID);
+
             await R.exec("DELETE FROM monitor_maintenance WHERE maintenance_id = ?", [maintenanceID]);
 
             for await (const monitor of monitors) {
@@ -109,6 +113,9 @@ module.exports.maintenanceSocketHandler = (socket) => {
     socket.on("addMaintenanceStatusPage", async (maintenanceID, statusPages, callback) => {
         try {
             checkLogin(socket);
+
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
+            await requireAllOwned("status_page", (statusPages || []).map((p) => p.id), socket.userID);
 
             await R.exec("DELETE FROM maintenance_status_page WHERE maintenance_id = ?", [maintenanceID]);
 
@@ -143,7 +150,7 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
-            let bean = await R.findOne("maintenance", " id = ? AND user_id = ? ", [maintenanceID, socket.userID]);
+            let bean = await requireOwnedMaintenance(maintenanceID, socket.userID);
 
             callback({
                 ok: true,
@@ -179,6 +186,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Get Monitors for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
+
             let monitors = await R.getAll(
                 "SELECT monitor.id FROM monitor_maintenance mm JOIN monitor ON mm.monitor_id = monitor.id WHERE mm.maintenance_id = ? ",
                 [maintenanceID]
@@ -202,6 +211,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
             checkLogin(socket);
 
             log.debug("maintenance", `Get Status Pages for Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
+
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
 
             let statusPages = await R.getAll(
                 "SELECT status_page.id, status_page.title FROM maintenance_status_page msp JOIN status_page ON msp.status_page_id = status_page.id WHERE msp.maintenance_id = ? ",
@@ -257,6 +268,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
 
             log.debug("maintenance", `Pause Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
 
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
+
             let maintenance = server.getMaintenance(maintenanceID);
 
             if (!maintenance) {
@@ -289,6 +302,8 @@ module.exports.maintenanceSocketHandler = (socket) => {
             checkLogin(socket);
 
             log.debug("maintenance", `Resume Maintenance: ${maintenanceID} User ID: ${socket.userID}`);
+
+            await requireOwnedMaintenance(maintenanceID, socket.userID);
 
             let maintenance = server.getMaintenance(maintenanceID);
 

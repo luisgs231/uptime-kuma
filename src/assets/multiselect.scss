@@ -19,12 +19,12 @@
 }
 
 .multiselect__option--highlight {
-    background: $primary !important;
+    background: $accent !important;
     color: $dark-font-color2 !important;
 }
 
 .multiselect__option--highlight::after {
-    background: $primary !important;
+    background: $accent !important;
     color: $dark-font-color2 !important;
 }
 
@@ -32,7 +32,7 @@
     border-radius: $border-radius;
     margin-bottom: 0;
     padding: 6px 26px 6px 10px;
-    background: $primary !important;
+    background: $accent !important;
 }
 
 .multiselect__placeholder {

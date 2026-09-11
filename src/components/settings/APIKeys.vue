@@ -1,15 +1,14 @@
 <template>
     <div>
-        <div v-if="settings.disableAuth" class="mt-5 d-flex align-items-center justify-content-center my-3">
-            {{ $t("apiKeysDisabledMsg") }}
-        </div>
-        <div v-else>
+        <div>
             <div class="add-btn">
                 <button class="btn btn-primary me-2" type="button" @click="$refs.apiKeyDialog.show()">
                     <font-awesome-icon icon="plus" />
                     {{ $t("Add API Key") }}
                 </button>
             </div>
+
+            <div class="form-text mb-3">{{ $t("apiKeyGrants") }}</div>
 
             <div>
                 <span
@@ -32,6 +31,10 @@
                                 {{ $t("Expires") }}:
                                 {{ item.expires || $t("Never") }}
                             </div>
+                            <div v-if="item.plainKey" class="mt-2">
+                                <CopyableInput :model-value="item.plainKey" disabled="disabled" />
+                            </div>
+                            <div v-else class="date">{{ $t("apiKeyNotRecoverable") }}</div>
                         </div>
                     </div>
 
@@ -58,7 +61,7 @@
         </div>
 
         <div class="text-center mt-3" style="font-size: 13px">
-            <a href="https://github.com/louislam/uptime-kuma/wiki/Prometheus-API-Keys" target="_blank">
+            <a href="https://github.com/luisgs231/uptime-kuma/wiki/Prometheus-API-Keys" target="_blank">
                 {{ $t("Learn More") }}
             </a>
         </div>
@@ -78,11 +81,13 @@
 <script>
 import APIKeyDialog from "../../components/APIKeyDialog.vue";
 import Confirm from "../Confirm.vue";
+import CopyableInput from "../CopyableInput.vue";
 
 export default {
     components: {
         APIKeyDialog,
         Confirm,
+        CopyableInput,
     },
     data() {
         return {
@@ -188,7 +193,7 @@ export default {
 
     &.active {
         .circle {
-            background-color: $primary;
+            background-color: $accent;
         }
     }
 

@@ -103,8 +103,6 @@ log.debug("server", "Importing http-graceful-shutdown");
 const gracefulShutdown = require("http-graceful-shutdown");
 log.debug("server", "Importing prometheus-api-metrics");
 const prometheusAPIMetrics = require("prometheus-api-metrics");
-const { passwordStrength } = require("check-password-strength");
-const TranslatableError = require("./translatable-error");
 
 log.debug("server", "Importing 2FA Modules");
 const notp = require("notp");
@@ -146,7 +144,7 @@ log.debug("server", "Importing Background Jobs");
 const { initBackgroundJobs, stopBackgroundJobs } = require("./jobs");
 const { loginRateLimiter, twoFaRateLimiter } = require("./rate-limiter");
 
-const { apiAuth } = require("./auth");
+const { apiAuth, requestOwner } = require("./auth");
 const { login } = require("./auth");
 const passwordHash = require("./password-hash");
 
@@ -179,6 +177,7 @@ const testMode = !!args["test"] || false;
 
 // Must be after io instantiation
 const {
+    sendCurrentUser,
     sendNotificationList,
     sendHeartbeatList,
     sendInfo,
@@ -204,11 +203,21 @@ const { maintenanceSocketHandler } = require("./socket-handlers/maintenance-sock
 const { apiKeySocketHandler } = require("./socket-handlers/api-key-socket-handler");
 const { generalSocketHandler } = require("./socket-handlers/general-socket-handler");
 const { Settings } = require("./settings");
+const { UserSettings } = require("./user-settings");
+const { buildRobotsTxt } = require("./robots");
+const { findOwned, requireOwnedTag, requireOwnedMonitor } = require("./ownership");
+const { USER_SETTINGS, USER_SETTING_DEFAULTS } = require("./setting-scope");
 const apicache = require("./modules/apicache");
 const { resetChrome } = require("./monitor-types/real-browser-monitor-type");
 const { EmbeddedMariaDB } = require("./embedded-mariadb");
 const { SetupDatabase } = require("./setup-database");
 const { chartSocketHandler } = require("./socket-handlers/chart-socket-handler");
+const { dmarcSocketHandler } = require("./socket-handlers/dmarc-socket-handler");
+const { userSocketHandler } = require("./socket-handlers/user-socket-handler");
+const { importSocketHandler } = require("./socket-handlers/import-socket-handler");
+const { passkeySocketHandler } = require("./socket-handlers/passkey-socket-handler");
+const { serializeConfig: serializeDmarcConfig } = require("./dmarc/config");
+const { serializeConfig: serializeCarpConfig } = require("./monitor-types/carp");
 
 app.use(express.json());
 
@@ -340,19 +349,44 @@ let needSetup = false;
 
     // Robots.txt
     app.get("/robots.txt", async (_request, response) => {
-        let txt = "User-agent: *\nDisallow:";
-        if (!(await setting("searchEngineIndex"))) {
-            txt += " /";
-        }
         response.setHeader("Content-Type", "text/plain");
-        response.send(txt);
+        response.send(await buildRobotsTxt());
     });
 
     // Basic Auth Router here
 
-    // Prometheus API metrics  /metrics
-    // With Basic Auth using the first user's username/password
-    app.get("/metrics", apiAuth, prometheusAPIMetrics());
+    // Prometheus metrics  /metrics
+    //
+    // Calling this registers the node default metrics, app_version and the
+    // http_* histograms on the default registry, which is what /metrics has
+    // always served. The middleware it returns is not used as the handler:
+    // it would answer with every account's monitors.
+    prometheusAPIMetrics();
+
+    // Same page as before, with one difference: the monitor_* series are
+    // filtered to whichever account authenticated. Previously any valid key
+    // returned every account's monitors, which on a shared instance is
+    // somebody else's data.
+    app.get("/metrics", apiAuth, async (request, response) => {
+        try {
+            const userID = await requestOwner(request);
+            if (!userID) {
+                response.status(403).json({ status: "fail",
+                    msg: "Unable to identify the account behind this key" });
+                return;
+            }
+
+            const monitorIDList = await R.getCol("SELECT id FROM monitor WHERE user_id = ?", [userID]);
+            const { contentType, body } = await Prometheus.renderForMonitors(monitorIDList);
+
+            response.set("Content-Type", contentType);
+            response.send(body);
+        } catch (error) {
+            log.error("metrics", error);
+            response.status(500).json({ status: "fail",
+                msg: "Unable to render metrics" });
+        }
+    });
 
     app.use(
         "/",
@@ -365,7 +399,7 @@ let needSetup = false;
     app.use("/upload", express.static(Database.uploadDir));
 
     app.get("/.well-known/change-password", async (_, response) => {
-        response.redirect("https://github.com/louislam/uptime-kuma/wiki/Reset-Password-via-CLI");
+        response.redirect("https://github.com/luisgs231/uptime-kuma/wiki/Reset-Password-via-CLI");
     });
 
     // API Router
@@ -558,7 +592,6 @@ let needSetup = false;
 
                     // Google authenticator doesn't like equal signs
                     // The fix is found at https://github.com/guyht/notp
-                    // Related issue: https://github.com/louislam/uptime-kuma/issues/486
                     encodedSecret = encodedSecret.toString().replace(/=/g, "");
 
                     let uri = `otpauth://totp/Uptime%20Kuma:${user.username}?secret=${encodedSecret}`;
@@ -704,10 +737,6 @@ let needSetup = false;
 
         socket.on("setup", async (username, password, callback) => {
             try {
-                if (passwordStrength(password).value === "Too weak") {
-                    throw new TranslatableError("passwordTooWeak");
-                }
-
                 if ((await R.knex("user").count("id as count").first()).count !== 0) {
                     throw new Error(
                         "Uptime Kuma has been initialized. If you want to run setup again, please delete the database."
@@ -717,6 +746,7 @@ let needSetup = false;
                 let user = R.dispense("user");
                 user.username = username;
                 user.password = await passwordHash.generate(password);
+                user.is_admin = true;
                 await R.store(user);
 
                 needSetup = false;
@@ -770,7 +800,13 @@ let needSetup = false;
                     "humanReadableInterval",
                     "globalpingdnsresolvetypeoptions",
                     "responsecheck",
+                    "dmarcConfig",
+                    "rblConfig",
+                    "carpConfig",
                 ];
+                const dmarcConfigInput = monitor.dmarcConfig;
+                const rblConfigInput = monitor.rblConfig;
+                const carpConfigInput = monitor.carpConfig;
                 for (const prop of frontendOnlyProperties) {
                     if (prop in monitor) {
                         delete monitor[prop];
@@ -778,6 +814,15 @@ let needSetup = false;
                 }
 
                 bean.import(monitor);
+                if (bean.type === "dmarc") {
+                    bean.dmarc_config = serializeDmarcConfig(dmarcConfigInput, null);
+                }
+                if (bean.type === "rbl") {
+                    bean.rbl_config = JSON.stringify(rblConfigInput || {});
+                }
+                if (bean.type === "carp") {
+                    bean.carp_config = serializeCarpConfig(carpConfigInput, null);
+                }
                 // Map camelCase frontend property to snake_case database column
                 if (monitor.retryOnlyOnStatusCodeFailure !== undefined) {
                     bean.retry_only_on_status_code_failure = monitor.retryOnlyOnStatusCodeFailure;
@@ -961,6 +1006,16 @@ let needSetup = false;
                 bean.ntp_stratum_threshold = monitor.ntpStratumThreshold;
                 bean.ntp_time_offset_threshold = monitor.ntpTimeOffsetThreshold;
                 bean.ntp_root_dispersion_threshold = monitor.ntpRootDispersionThreshold;
+                if (bean.type === "dmarc") {
+                    bean.dmarc_config = serializeDmarcConfig(monitor.dmarcConfig, bean.dmarc_config);
+                    bean.dmarc_state = null;
+                }
+                if (bean.type === "rbl") {
+                    bean.rbl_config = JSON.stringify(monitor.rblConfig || {});
+                }
+                if (bean.type === "carp") {
+                    bean.carp_config = serializeCarpConfig(monitor.carpConfig, bean.carp_config);
+                }
 
                 // ping advanced options
                 bean.ping_numeric = monitor.ping_numeric;
@@ -1020,7 +1075,7 @@ let needSetup = false;
 
                 log.info("monitor", `Get Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                let monitor = await R.findOne("monitor", " id = ? AND user_id = ? ", [monitorID, socket.userID]);
+                let monitor = await requireOwnedMonitor(monitorID, socket.userID);
                 const monitorData = [{ id: monitor.id, active: monitor.active }];
                 const preloadData = await Monitor.preparePreloadData(monitorData);
                 callback({
@@ -1061,6 +1116,8 @@ let needSetup = false;
                 checkLogin(socket);
 
                 log.info("monitor", `Get Monitor Beats: ${monitorID} User ID: ${socket.userID}`);
+
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 if (period == null) {
                     throw new Error("Invalid period.");
@@ -1224,7 +1281,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                const list = await R.findAll("tag");
+                const list = await R.find("tag", " user_id = ? ", [ socket.userID ]);
 
                 callback({
                     ok: true,
@@ -1243,6 +1300,7 @@ let needSetup = false;
                 checkLogin(socket);
 
                 let bean = R.dispense("tag");
+                bean.user_id = socket.userID;
                 bean.name = tag.name;
                 bean.color = tag.color;
                 await R.store(bean);
@@ -1263,7 +1321,7 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                let bean = await R.findOne("tag", " id = ? ", [tag.id]);
+                let bean = await findOwned("tag", tag.id, socket.userID);
                 if (bean == null) {
                     callback({
                         ok: false,
@@ -1294,7 +1352,8 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                await R.exec("DELETE FROM tag WHERE id = ? ", [tagID]);
+                await requireOwnedTag(tagID, socket.userID);
+                await R.exec("DELETE FROM tag WHERE id = ? AND user_id = ? ", [ tagID, socket.userID ]);
 
                 callback({
                     ok: true,
@@ -1312,6 +1371,9 @@ let needSetup = false;
         socket.on("addMonitorTag", async (tagID, monitorID, value, callback) => {
             try {
                 checkLogin(socket);
+
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await R.exec("INSERT INTO monitor_tag (tag_id, monitor_id, value) VALUES (?, ?, ?)", [
                     tagID,
@@ -1338,6 +1400,9 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
+
                 await R.exec("UPDATE monitor_tag SET value = ? WHERE tag_id = ? AND monitor_id = ?", [
                     value,
                     tagID,
@@ -1362,6 +1427,9 @@ let needSetup = false;
         socket.on("deleteMonitorTag", async (tagID, monitorID, value, callback) => {
             try {
                 checkLogin(socket);
+
+                await requireOwnedTag(tagID, socket.userID);
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await R.exec("DELETE FROM monitor_tag WHERE tag_id = ? AND monitor_id = ? AND value = ?", [
                     tagID,
@@ -1390,8 +1458,13 @@ let needSetup = false;
 
                 let count;
                 if (monitorID == null) {
-                    count = await R.count("heartbeat", "important = 1");
+                    count = await R.count(
+                        "heartbeat",
+                        "important = 1 AND monitor_id IN (SELECT id FROM monitor WHERE user_id = ?)",
+                        [ socket.userID ]
+                    );
                 } else {
+                    await requireOwnedMonitor(monitorID, socket.userID);
                     count = await R.count("heartbeat", "monitor_id = ? AND important = 1", [monitorID]);
                 }
 
@@ -1413,17 +1486,20 @@ let needSetup = false;
 
                 let list;
                 if (monitorID == null) {
+                    // This account's events, not the instance's.
                     list = await R.find(
                         "heartbeat",
                         `
                         important = 1
+                        AND monitor_id IN (SELECT id FROM monitor WHERE user_id = ?)
                         ORDER BY time DESC
                         LIMIT ?
                         OFFSET ?
                     `,
-                        [count, offset]
+                        [ socket.userID, count, offset ]
                     );
                 } else {
+                    await requireOwnedMonitor(monitorID, socket.userID);
                     list = await R.find(
                         "heartbeat",
                         `
@@ -1453,12 +1529,8 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                if (!password.newPassword) {
+                if (typeof password.newPassword !== "string") {
                     throw new Error("Invalid new password");
-                }
-
-                if (passwordStrength(password.newPassword).value === "Too weak") {
-                    throw new TranslatableError("passwordTooWeak");
                 }
 
                 let user = await doubleCheckPassword(socket, password.currentPassword);
@@ -1484,15 +1556,25 @@ let needSetup = false;
         socket.on("getSettings", async (callback) => {
             try {
                 checkLogin(socket);
-                const data = await getSettings("general");
 
-                if (!data.serverTimezone) {
+                const currentUser = await R.findOne("user", " id = ? AND active = 1 ", [ socket.userID ]);
+                const isAdmin = !!currentUser?.is_admin;
+
+                const data = isAdmin ? await getSettings("general") : {};
+
+                Object.assign(data, {
+                    ...USER_SETTING_DEFAULTS,
+                    ...(await UserSettings.getSettings(socket.userID)),
+                });
+
+                if (isAdmin && !data.serverTimezone) {
                     data.serverTimezone = await server.getTimezone();
                 }
 
                 callback({
                     ok: true,
                     data: data,
+                    isAdmin,
                 });
             } catch (e) {
                 callback({
@@ -1506,20 +1588,16 @@ let needSetup = false;
             try {
                 checkLogin(socket);
 
-                // If currently is disabled auth, don't need to check
-                // Disabled Auth + Want to Disable Auth => No Check
-                // Disabled Auth + Want to Enable Auth => No Check
-                // Enabled Auth + Want to Disable Auth => Check!!
-                // Enabled Auth + Want to Enable Auth => No Check
-                const currentDisabledAuth = await setting("disableAuth");
-                if (!currentDisabledAuth && data.disableAuth) {
-                    await doubleCheckPassword(socket, currentPassword);
-                }
+                await UserSettings.setSettings(socket.userID, data, USER_SETTINGS);
 
-                // Log out all clients if enabling auth
-                // GHSA-23q2-5gf8-gjpp
-                if (currentDisabledAuth && !data.disableAuth) {
-                    server.disconnectAllSocketClients(socket.userID, socket.id);
+                const currentUser = await R.findOne("user", " id = ? AND active = 1 ", [ socket.userID ]);
+                if (!currentUser?.is_admin) {
+                    callback({
+                        ok: true,
+                        msg: "Saved.",
+                        msgi18n: true,
+                    });
+                    return;
                 }
 
                 const previousChromeExecutable = await Settings.get("chromeExecutable");
@@ -1667,6 +1745,7 @@ let needSetup = false;
 
                 log.info("manage", `Clear Events Monitor: ${monitorID} User ID: ${socket.userID}`);
 
+                await requireOwnedMonitor(monitorID, socket.userID);
                 await R.exec("UPDATE heartbeat SET msg = ?, important = ? WHERE monitor_id = ? ", ["", "0", monitorID]);
 
                 callback({
@@ -1685,6 +1764,8 @@ let needSetup = false;
                 checkLogin(socket);
 
                 log.info("manage", `Clear Heartbeats Monitor: ${monitorID} User ID: ${socket.userID}`);
+
+                await requireOwnedMonitor(monitorID, socket.userID);
 
                 await UptimeCalculator.clearStatistics(monitorID);
 
@@ -1746,6 +1827,10 @@ let needSetup = false;
         remoteBrowserSocketHandler(socket);
         generalSocketHandler(socket, server);
         chartSocketHandler(socket);
+        dmarcSocketHandler(socket);
+        userSocketHandler(socket);
+        importSocketHandler(socket, startMonitor);
+        passkeySocketHandler(socket, afterLogin, (user) => User.createJWT(user, server.jwtSecret));
 
         log.debug("server", "added all socket handlers");
 
@@ -1753,15 +1838,8 @@ let needSetup = false;
         // Better do anything after added all socket handlers here
         // ***************************
 
-        log.debug("auth", "check auto login");
-        if (await setting("disableAuth")) {
-            log.info("auth", "Disabled Auth: auto login to admin");
-            await afterLogin(socket, await R.findOne("user"));
-            socket.emit("autoLogin");
-        } else {
-            socket.emit("loginRequired");
-            log.debug("auth", "need auth");
-        }
+        socket.emit("loginRequired");
+        log.debug("auth", "need auth");
     });
 
     log.debug("server", "Init the server");
@@ -1781,8 +1859,6 @@ let needSetup = false;
 
         // Put this here. Start background jobs after the db and server is ready to prevent clear up during db migration.
         await initBackgroundJobs();
-
-        checkVersion.startInterval();
     });
 
     // Start cloudflared at the end if configured
@@ -1838,6 +1914,7 @@ async function afterLogin(socket, user) {
     let monitorList = await server.sendMonitorList(socket);
     await Promise.allSettled([
         sendInfo(socket),
+        sendCurrentUser(socket),
         server.sendMaintenanceList(socket),
         sendNotificationList(socket),
         sendProxyList(socket),
@@ -2022,7 +2099,7 @@ gracefulShutdown(server.httpServer, {
 let unexpectedErrorHandler = (error, promise) => {
     console.trace(error);
     UptimeKumaServer.errorLog(error, false);
-    console.error("If you keep encountering errors, please report to https://github.com/louislam/uptime-kuma/issues");
+    console.error("If you keep encountering errors, please report to https://github.com/luisgs231/uptime-kuma/issues");
 };
 process.addListener("unhandledRejection", unexpectedErrorHandler);
 process.addListener("uncaughtException", unexpectedErrorHandler);

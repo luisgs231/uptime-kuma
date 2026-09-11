@@ -48,6 +48,10 @@ class APIKey extends BeanModel {
             active: this.active,
             expires: this.expires,
             status: this.getStatus(),
+            // Only ever sent to the account that owns the key: the list is
+            // fetched with user_id = the caller. Null for keys created before
+            // the plaintext was kept, which cannot be recovered.
+            plainKey: this.key_plain ?? null,
         };
     }
 

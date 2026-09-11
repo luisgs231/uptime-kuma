@@ -1,5 +1,5 @@
 module.exports = {
-    ignorePatterns: ["test/*.js", "server/modules/*", "src/util.js"],
+    ignorePatterns: ["test/*.js", "server/modules/*", "src/util.js", "src/monitor-status.js"],
     root: true,
     env: {
         browser: true,

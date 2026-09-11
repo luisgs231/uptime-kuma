@@ -1,9 +1,9 @@
 <template>
     <div class="d-flex justify-content-center align-items-center">
         <div class="logo d-flex flex-column justify-content-center align-items-center">
-            <object class="my-4" width="200" height="200" data="/icon.svg" />
+            <object class="my-4" width="200" height="200" :data="$root.iconUrl || '/icon.svg'" />
             <div class="fs-4 fw-bold">Uptime Kuma</div>
-            <div>{{ $t("versionIs", { version: $root.info.version }) }}</div>
+            <div>Based on Uptime Kuma {{ $t("versionIs", { version: $root.info.version }) }}</div>
             <div class="frontend-version">{{ $t("frontendVersionIs", { version: $root.frontendVersion }) }}</div>
 
             <div v-if="!$root.isFrontendBackendVersionMatched" class="alert alert-warning mt-4" role="alert">
@@ -11,31 +11,11 @@
             </div>
 
             <div class="my-3 update-link">
-                <a href="https://github.com/louislam/uptime-kuma/releases" target="_blank" rel="noopener">
+                <a href="https://github.com/luisgs231/uptime-kuma" target="_blank" rel="noopener">
                     {{ $t("Check Update On GitHub") }}
                 </a>
             </div>
 
-            <div class="mt-1">
-                <div class="form-check">
-                    <label>
-                        <input v-model="settings.checkUpdate" type="checkbox" @change="saveSettings()" />
-                        {{ $t("Show update if available") }}
-                    </label>
-                </div>
-
-                <div class="form-check">
-                    <label>
-                        <input
-                            v-model="settings.checkBeta"
-                            type="checkbox"
-                            :disabled="!settings.checkUpdate"
-                            @change="saveSettings()"
-                        />
-                        {{ $t("Also check beta release") }}
-                    </label>
-                </div>
-            </div>
             <div class="mt-5">
                 <p>
                     {{ $t("Font Twemoji by Twitter licensed under") }}
@@ -47,21 +27,7 @@
 </template>
 
 <script>
-export default {
-    computed: {
-        settings() {
-            return this.$parent.$parent.$parent.settings;
-        },
-        saveSettings() {
-            return this.$parent.$parent.$parent.saveSettings;
-        },
-        settingsLoaded() {
-            return this.$parent.$parent.$parent.settingsLoaded;
-        },
-    },
-
-    watch: {},
-};
+export default {};
 </script>
 
 <style lang="scss" scoped>

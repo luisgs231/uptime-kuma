@@ -45,6 +45,22 @@
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Keep the key so it can be shown again -->
+                        <div class="my-3 form-check">
+                            <input
+                                id="api-key-recoverable"
+                                v-model="key.recoverable"
+                                class="form-check-input"
+                                type="checkbox"
+                            />
+                            <label class="form-check-label" for="api-key-recoverable">
+                                {{ $t("apiKeyRecoverable") }}
+                            </label>
+                            <div v-if="key.recoverable" class="alert alert-warning mt-2 mb-0" role="alert">
+                                {{ $t("apiKeyRecoverableWarning") }}
+                            </div>
+                        </div>
                     </div>
                     <div class="modal-footer">
                         <button id="monitor-submit-btn" class="btn btn-primary" type="submit" :disabled="processing">
@@ -66,7 +82,7 @@
 
                     <div class="modal-body">
                         <div class="mb-3">
-                            {{ $t("apiKeyAddedMsg") }}
+                            {{ wasRecoverable ? $t("apiKeyAddedRecoverableMsg") : $t("apiKeyAddedMsg") }}
                         </div>
                         <div class="mb-3">
                             <CopyableInput v-model="clearKey" disabled="disabled" />
@@ -106,6 +122,9 @@ export default {
             dark: this.$root.theme === "dark",
             minDate: this.$root.date(dayjs()) + " 00:00",
             clearKey: null,
+            // Captured at submit time: the form is cleared before the "key
+            // added" modal is read, so key.recoverable is gone by then.
+            wasRecoverable: false,
             noExpire: false,
         };
     },
@@ -126,6 +145,7 @@ export default {
                 name: "",
                 expires: this.minDate,
                 active: 1,
+                recoverable: false,
             };
 
             this.keyaddmodal.show();
@@ -141,6 +161,8 @@ export default {
             if (this.noExpire) {
                 this.key.expires = null;
             }
+
+            this.wasRecoverable = !!this.key.recoverable;
 
             this.$root.addAPIKey(this.key, async (res) => {
                 this.keyaddmodal.hide();
@@ -164,6 +186,7 @@ export default {
                 name: "",
                 expires: this.minDate,
                 active: 1,
+                recoverable: false,
             };
             this.noExpire = false;
         },

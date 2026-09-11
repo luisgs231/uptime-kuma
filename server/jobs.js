@@ -1,6 +1,7 @@
 const { UptimeKumaServer } = require("./uptime-kuma-server");
 const { clearOldData } = require("./jobs/clear-old-data");
 const { incrementalVacuum } = require("./jobs/incremental-vacuum");
+const { sweep: sweepCeremonies } = require("./passkey/store");
 const Cron = require("croner");
 
 const jobs = [
@@ -14,6 +15,14 @@ const jobs = [
         name: "incremental-vacuum",
         interval: "*/5 * * * *",
         jobFunc: incrementalVacuum,
+        croner: null,
+    },
+    {
+        // Abandoned passkey ceremonies: somebody presses the button and then
+        // puts the phone down. Nothing else deletes those rows.
+        name: "sweep-webauthn-sessions",
+        interval: "*/15 * * * *",
+        jobFunc: sweepCeremonies,
         croner: null,
     },
 ];

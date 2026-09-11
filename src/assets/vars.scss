@@ -1,4 +1,10 @@
 $primary: #5cdd8b;
+
+// What the interface actually paints with. Bootstrap keeps the concrete
+// $primary above, because it does colour maths on it that a var() cannot
+// survive; everything of ours reads this instead, so an account changing its
+// accent repaints without a rebuild.
+$accent: var(--accent, #{$primary});
 $danger: #dc3545;
 $warning: #f8a306;
 $maintenance: #1747f5;
@@ -6,8 +12,11 @@ $link-color: #111;
 $border-radius: 50rem;
 $secondary-text: #aaa;
 
-$highlight: #7ce8a4;
-$highlight-white: #e7faec;
+// Both used to be a lighter and a very pale green; derived from the accent so
+// they follow it. For the default accent these land within a shade of the
+// colours they replace, so nothing looks different until somebody chooses.
+$highlight: color-mix(in srgb, #{$accent} 78%, white);
+$highlight-white: color-mix(in srgb, #{$accent} 14%, white);
 
 $dark-font-color: #b1b8c0;
 $dark-font-color2: #020b05;

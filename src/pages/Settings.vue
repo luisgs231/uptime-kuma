@@ -26,7 +26,7 @@
 
                     <!-- Logout Button -->
                     <a
-                        v-if="$root.isMobile && $root.loggedIn && $root.socket.token !== 'autoLogin'"
+                        v-if="$root.isMobile && $root.loggedIn"
                         class="logout"
                         @click.prevent="$root.logout"
                     >
@@ -37,7 +37,7 @@
                     </a>
                 </div>
                 <div class="settings-content col-lg-9 col-md-7">
-                    <div v-if="currentPage" class="settings-content-header">
+                    <div v-if="currentPage && subMenus[currentPage]" class="settings-content-header">
                         {{ subMenus[currentPage].title }}
                     </div>
                     <div class="mx-3">
@@ -94,9 +94,13 @@ export default {
                 notifications: {
                     title: this.$t("Notifications"),
                 },
-                "reverse-proxy": {
-                    title: this.$t("Reverse Proxy"),
-                },
+                ...(this.$root.isAdmin
+                    ? {
+                        "reverse-proxy": {
+                            title: this.$t("Reverse Proxy"),
+                        },
+                    }
+                    : {}),
                 tags: {
                     title: this.$t("Tags"),
                 },
@@ -118,6 +122,13 @@ export default {
                 proxies: {
                     title: this.$t("Proxies"),
                 },
+                ...(this.$root.isAdmin
+                    ? {
+                        users: {
+                            title: "Users",
+                        },
+                    }
+                    : {}),
                 about: {
                     title: this.$t("About"),
                 },
@@ -156,16 +167,16 @@ export default {
             this.$root.getSocket().emit("getSettings", (res) => {
                 this.settings = res.data;
 
-                if (this.settings.checkUpdate === undefined) {
-                    this.settings.checkUpdate = true;
-                }
-
                 if (this.settings.searchEngineIndex === undefined) {
                     this.settings.searchEngineIndex = false;
                 }
 
                 if (this.settings.entryPage === undefined) {
                     this.settings.entryPage = "dashboard";
+                }
+
+                if (this.settings.landingPage === undefined) {
+                    this.settings.landingPage = "dashboard";
                 }
 
                 if (this.settings.nscd === undefined) {
@@ -202,13 +213,12 @@ export default {
         /**
          * Save Settings
          * @param {saveSettingsCB} callback Callback for socket response
-         * @param {string} currentPassword Only need for disableAuth to true
          * @returns {void}
          */
-        saveSettings(callback, currentPassword) {
+        saveSettings(callback) {
             let valid = this.validateSettings();
             if (valid.success) {
-                this.$root.getSocket().emit("setSettings", this.settings, currentPassword, (res) => {
+                this.$root.getSocket().emit("setSettings", this.settings, null, (res) => {
                     this.$root.toastRes(res);
                     this.loadSettings();
 
@@ -281,7 +291,7 @@ footer {
 
     .active .menu-item {
         background: $highlight-white;
-        border-left: 4px solid $primary;
+        border-left: 4px solid $accent;
         border-top-left-radius: 0;
         border-bottom-left-radius: 0;
 

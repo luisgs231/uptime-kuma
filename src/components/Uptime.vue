@@ -4,6 +4,7 @@
 
 <script>
 import { DOWN, MAINTENANCE, PENDING, UP } from "../util.ts";
+import { heartbeatStatusMeta } from "../monitor-status.ts";
 
 export default {
     props: {
@@ -34,7 +35,7 @@ export default {
 
             if (this.$root.uptimeList[key] !== undefined) {
                 let result = Math.round(this.$root.uptimeList[key] * 10000) / 100;
-                // Only perform sanity check on status page. See louislam/uptime-kuma#2628
+                // Only perform sanity check on status page. See uptime-kuma issue 2628
                 if (this.$route.path.startsWith("/status") && result > 100) {
                     return "100%";
                 } else {
@@ -48,6 +49,12 @@ export default {
         color() {
             if (this.lastHeartBeat.status === MAINTENANCE) {
                 return "maintenance";
+            }
+
+            // A monitor type with statuses of its own names its own colour.
+            const own = heartbeatStatusMeta(this.monitor?.type, this.lastHeartBeat);
+            if (own) {
+                return own.color;
             }
 
             if (this.lastHeartBeat.status === DOWN) {

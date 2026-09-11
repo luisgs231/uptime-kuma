@@ -40,7 +40,6 @@
                         type="password"
                         class="form-control"
                         :placeholder="$t('Password')"
-                        required
                         data-cy="password-input"
                     />
                     <label for="floatingPassword">{{ $t("Password") }}</label>
@@ -53,7 +52,6 @@
                         type="password"
                         class="form-control"
                         :placeholder="$t('Repeat Password')"
-                        required
                         data-cy="password-repeat-input"
                     />
                     <label for="repeat">{{ $t("Repeat Password") }}</label>

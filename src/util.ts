@@ -202,7 +202,7 @@ export function ucfirst(str: string) {
 }
 
 /**
- * @deprecated Use log.debug (https://github.com/louislam/uptime-kuma/pull/910)
+ * @deprecated Use log.debug
  * @param msg Message to write
  * @returns {void}
  */
@@ -773,3 +773,97 @@ export const TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD = {
     "tailscale-ping": "hostname",
     "sip-options": "hostname",
 } as const;
+
+/**
+ * One accent colour an account can pick.
+ */
+export interface AccentColor {
+    name: string;
+    label: string;
+    hex: string;
+}
+
+/**
+ * The accents on offer.
+ *
+ * Green first and unchanged: it is what Uptime Kuma has always looked like, and
+ * an account that never chooses gets exactly that. The rest are picked to sit
+ * in the same register - luminous but not fluorescent, legible as a foreground
+ * on the dark theme and as a fill on the light one.
+ *
+ * They are spread right around the wheel rather than bunched at the green end,
+ * so two of them are never nearly the same colour. The warm ones do sit near the
+ * warning and danger colours, which is a deliberate trade: somebody who picks
+ * amber is choosing to have a healthy monitor drawn in roughly the colour of a
+ * maintenance window, and gets to make that choice for themselves.
+ */
+export const ACCENT_COLORS: AccentColor[] = [
+    { name: "green", label: "Green", hex: "#5cdd8b" },
+    { name: "cyan", label: "Cyan", hex: "#4dd4e0" },
+    { name: "blue", label: "Blue", hex: "#5cb3ff" },
+    { name: "violet", label: "Violet", hex: "#a98cff" },
+    { name: "magenta", label: "Magenta", hex: "#ff7ad9" },
+    { name: "pink", label: "Pink", hex: "#ff6b9d" },
+    { name: "red", label: "Red", hex: "#ff6b6b" },
+    { name: "orange", label: "Orange", hex: "#ff9f5c" },
+    { name: "amber", label: "Amber", hex: "#ffc65c" },
+    { name: "lime", label: "Lime", hex: "#b6e35c" },
+];
+
+/** What an account gets before it has chosen: Uptime Kuma's own green. */
+export const DEFAULT_ACCENT = "green";
+
+/**
+ * The colour behind an accent's name.
+ * @param name Accent name, or anything at all
+ * @returns The hex colour, falling back to the default
+ */
+export function accentHex(name: string | null | undefined): string {
+    const found = ACCENT_COLORS.find((accent) => accent.name === name);
+    return (found || ACCENT_COLORS[0]).hex;
+}
+
+/**
+ * Whether a name is one of the accents on offer.
+ * @param name Accent name
+ * @returns True if it can be stored
+ */
+export function isAccent(name: unknown): boolean {
+    return typeof name === "string" && ACCENT_COLORS.some((accent) => accent.name === name);
+}
+
+/**
+ * A lighter shade of a colour, for the second stop of the logo's gradient.
+ * @param hex A #rrggbb colour
+ * @param amount How far towards white, 0 to 1
+ * @returns The lightened colour
+ */
+export function lighten(hex: string, amount: number): string {
+    const channel = (i: number): string => {
+        const value = parseInt(hex.slice(i, i + 2), 16);
+        const mixed = Math.round(value + (255 - value) * amount);
+        return mixed.toString(16).padStart(2, "0");
+    };
+    return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+
+/** The two colours the shipped icon is drawn in. */
+export const ICON_COLORS = { base: "#5CDD8B",
+    light: "#86E6A9" };
+
+/**
+ * Redraw the icon in an accent.
+ *
+ * The file is a two-stop gradient in Uptime Kuma's green; swapping both stops
+ * is the whole of it. Returned as a data URI rather than written anywhere,
+ * because this is per account and per browser session.
+ * @param svg The icon's source
+ * @param hex The accent
+ * @returns A data URI for the recoloured icon
+ */
+export function iconDataUrl(svg: string, hex: string): string {
+    const recoloured = svg
+        .split(ICON_COLORS.base).join(hex)
+        .split(ICON_COLORS.light).join(lighten(hex, 0.28));
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(recoloured)}`;
+}

@@ -1,6 +1,6 @@
 /**
  * Copy from node_modules/dayjs/plugin/timezone.js
- * Try to fix https://github.com/louislam/uptime-kuma/issues/2318
+ * Kept as a local copy to work around a timezone handling bug.
  * Source: https://github.com/iamkun/dayjs/tree/dev/src/plugin/utc
  * License: MIT
  */

@@ -2,6 +2,9 @@ const dayjs = require("dayjs");
 const axios = require("axios");
 const { setTimeout, clearTimeout } = require("unlimited-timeout");
 const { Prometheus } = require("../prometheus");
+const { parseConfig: parseDmarcConfig, redactConfig: redactDmarcConfig } = require("../dmarc/config");
+const { parseConfig: parseRblConfig } = require("../monitor-types/rbl");
+const { parseConfig: parseCarpConfig, redactConfig: redactCarpConfig } = require("../monitor-types/carp");
 const {
     log,
     UP,
@@ -27,6 +30,7 @@ const {
     RESPONSE_BODY_LENGTH_DEFAULT,
     RESPONSE_BODY_LENGTH_MAX,
 } = require("../../src/util");
+const { heartbeatStatusMeta, stripStatusPrefix, hasStatusVocabulary } = require("../../src/monitor-status");
 const {
     ping,
     checkCertificate,
@@ -64,6 +68,28 @@ const brotliCompress = promisify(zlib.brotliCompress);
 const DomainExpiry = require("./domain_expiry");
 
 const rootCertificates = rootCertificatesFingerprints();
+
+/**
+ * The icon in front of a status in a notification.
+ */
+const NOTIFICATION_STATUS_ICON = {
+    [UP]: "✅",
+    [DOWN]: "🔴",
+    [PENDING]: "⚠️",
+    [MAINTENANCE]: "🔧",
+};
+
+/**
+ * The icon for a monitor type that reports a status of its own, taken from the
+ * colour of the status rather than the numeric one underneath it.
+ */
+const NOTIFICATION_COLOR_ICON = {
+    primary: "✅",
+    success: "✅",
+    warning: "🟡",
+    danger: "🔴",
+    secondary: "⚪",
+};
 
 /**
  * status:
@@ -218,11 +244,17 @@ class Monitor extends BeanModel {
             saveResponse: this.getSaveResponse(),
             saveErrorResponse: this.getSaveErrorResponse(),
             responseMaxLength: this.response_max_length ?? RESPONSE_BODY_LENGTH_DEFAULT,
+
+            dmarcConfig: this.type === "dmarc" ? redactDmarcConfig(this.dmarc_config) : undefined,
+            rblConfig: this.type === "rbl" ? parseRblConfig(this.rbl_config) : undefined,
+            carpConfig: this.type === "carp" ? redactCarpConfig(parseCarpConfig(this.carp_config)) : undefined,
         };
 
         if (includeSensitiveData) {
             data = {
                 ...data,
+                dmarcConfig: this.type === "dmarc" ? parseDmarcConfig(this.dmarc_config) : undefined,
+                carpConfig: this.type === "carp" ? parseCarpConfig(this.carp_config) : undefined,
                 headers: this.headers,
                 body: this.body,
                 grpcBody: this.grpcBody,
@@ -467,7 +499,6 @@ class Monitor extends BeanModel {
             }
 
             // Runtime patch timeout if it is 0
-            // See https://github.com/louislam/uptime-kuma/pull/3961#issuecomment-1804149144
             if (!this.timeout || this.timeout <= 0) {
                 this.timeout = this.interval * 1000 * 0.8;
             }
@@ -1057,6 +1088,7 @@ class Monitor extends BeanModel {
 
             // Calculate uptime
             let uptimeCalculator = await UptimeCalculator.getUptimeCalculator(this.id);
+            uptimeCalculator.neutralPending = hasStatusVocabulary(this.type);
             let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
             bean.end_time = R.isoDateTimeMillis(endTimeDayjs);
 
@@ -1100,7 +1132,7 @@ class Monitor extends BeanModel {
             } catch (e) {
                 console.trace(e);
                 UptimeKumaServer.errorLog(e, false);
-                log.error("monitor", "Please report to https://github.com/louislam/uptime-kuma/issues");
+                log.error("monitor", "Please report to https://github.com/luisgs231/uptime-kuma/issues");
 
                 if (!this.isStop) {
                     log.info("monitor", "Try to restart the monitor");
@@ -1449,6 +1481,35 @@ class Monitor extends BeanModel {
     }
 
     /**
+     * The status line and message body a notification is built from.
+     * @param {Monitor} monitor The monitor being reported on
+     * @param {import("./heartbeat")} bean The heartbeat being reported
+     * @returns {object} status line and message body
+     */
+    static notificationText(monitor, bean) {
+        const statusMeta = heartbeatStatusMeta(monitor.type, {
+            msg: bean.msg,
+            dmarcStatus: bean.dmarc_status,
+        });
+
+        if (!statusMeta) {
+            return {
+                status: bean.status === UP ? "✅ Up" : "🔴 Down",
+                body: bean.msg,
+            };
+        }
+
+        const icon = bean.status === MAINTENANCE
+            ? NOTIFICATION_STATUS_ICON[MAINTENANCE]
+            : NOTIFICATION_COLOR_ICON[statusMeta.color] || NOTIFICATION_STATUS_ICON[bean.status] || "🔴";
+
+        return {
+            status: `${icon} ${statusMeta.label}`,
+            body: stripStatusPrefix(bean.msg),
+        };
+    }
+
+    /**
      * Send a notification about a monitor
      * @param {boolean} isFirstBeat Is this beat the first of this monitor?
      * @param {Monitor} monitor The monitor to send a notification about
@@ -1459,14 +1520,9 @@ class Monitor extends BeanModel {
         if (!isFirstBeat || bean.status === DOWN) {
             const notificationList = await Monitor.getNotificationList(monitor);
 
-            let text;
-            if (bean.status === UP) {
-                text = "✅ Up";
-            } else {
-                text = "🔴 Down";
-            }
+            const { status: text, body } = Monitor.notificationText(monitor, bean);
 
-            let msg = `[${monitor.name}] [${text}] ${bean.msg}`;
+            let msg = `[${monitor.name}] [${text}] ${body}`;
 
             const heartbeatJSON = await bean.toJSONAsync({ decodeResponse: true });
             const monitorData = [{ id: monitor.id, active: monitor.active, name: monitor.name }];

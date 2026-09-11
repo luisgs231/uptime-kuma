@@ -2,6 +2,83 @@
 @import "multiselect.scss";
 @import "node_modules/bootstrap/scss/bootstrap";
 
+// ---------------------------------------------------------------------------
+// The accent
+//
+// Bootstrap 5.1 compiles $primary into literal colours - it has no per-component
+// custom properties - so the classes it generated still carry the old green.
+// These restate the ones the interface actually shows, reading the runtime
+// variable instead. `--accent` is set per account when the client learns who it
+// is signed in as; the fallback keeps everything green before that happens and
+// on the pages that never sign in, like a public status page.
+//
+// This includes the up state: `.bg-primary` is the up badge and `--bs-primary`
+// is what the heartbeat bar reads, so both follow the accent and a monitor that
+// is fine is drawn in whatever colour its owner picked. That only works because
+// the palette contains no amber and no red - see ACCENT_COLORS - so up can
+// never be mistaken for a warning or a failure.
+// ---------------------------------------------------------------------------
+
+:root {
+    --accent: #{$primary};
+    --bs-primary: var(--accent);
+}
+
+.bg-primary {
+    background-color: var(--accent) !important;
+}
+
+.text-primary {
+    color: var(--accent) !important;
+}
+
+.border-primary {
+    border-color: var(--accent) !important;
+}
+
+.btn-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.btn-outline-primary {
+    color: var(--accent);
+    border-color: var(--accent);
+
+    &:hover,
+    &:active,
+    &:focus,
+    &.active {
+        background-color: var(--accent);
+        border-color: var(--accent);
+    }
+}
+
+// A checked radio in a btn-group - every toggle on the Appearance page is one -
+// is styled through the sibling selector rather than .active, so it needs
+// naming separately or the chosen option stays the old green.
+.btn-check:checked + .btn-outline-primary,
+.btn-check:active + .btn-outline-primary {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.form-check-input:checked {
+    background-color: var(--accent);
+    border-color: var(--accent);
+}
+
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    border-color: var(--accent);
+}
+
+.progress-bar {
+    background-color: var(--accent);
+}
+
+
 #app {
     font-family:
         "Twemoji Country Flags",
@@ -282,7 +359,7 @@ optgroup {
     }
 
     .form-check-input:checked {
-        border-color: $primary; // Re-apply bootstrap border
+        border-color: $accent; // Re-apply bootstrap border
     }
 
     .form-switch .form-check-input {
@@ -527,8 +604,8 @@ optgroup {
 
 .alert-success {
     color: #122f21;
-    background-color: $primary;
-    border-color: $primary;
+    background-color: $accent;
+    border-color: $accent;
 }
 
 .alert-info {
@@ -595,7 +672,7 @@ optgroup {
 }
 
 .spinner {
-    color: $primary;
+    color: $accent;
 }
 
 .prism-editor__textarea {

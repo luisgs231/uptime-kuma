@@ -1,7 +1,15 @@
 {
     "extends": "./tsconfig.json",
     "compilerOptions": {
-        "esModuleInterop": false
+        // Off on purpose: the emitted util.js is required by CommonJS backend
+        // code, and the interop helpers would change the shape of its exports.
+        "esModuleInterop": false,
+        // Which leaves default imports like dayjs failing to type-check, so
+        // allow them for checking only - this one does not affect the emit.
+        "allowSyntheticDefaultImports": true,
+        // The installed @types ship declarations newer than this TypeScript,
+        // and their errors are not ours to fix.
+        "skipLibCheck": true
     },
-    "files": ["./src/util.ts"]
+    "files": ["./src/util.ts", "./src/monitor-status.ts"]
 }

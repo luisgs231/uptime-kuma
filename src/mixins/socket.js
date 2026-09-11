@@ -6,6 +6,7 @@ import dayjs from "dayjs";
 import mitt from "mitt";
 
 import { DOWN, MAINTENANCE, PENDING, UP } from "../util.ts";
+import { heartbeatStatusMeta, stripStatusPrefix } from "../monitor-status.ts";
 import {
     getDevContainerServerHostname,
     isDevContainer,
@@ -38,6 +39,8 @@ export default {
                 initedSocketIO: false,
             },
             username: null,
+            currentUser: null,
+            pendingLandingRedirect: false,
             remember: localStorage.remember !== "0",
             allowLoginDialog: false, // Allowed to show login dialog, but "loggedIn" have to be true too. This exists because prevent the login dialog show 0.1s in first before the socket server auth-ed.
             loggedIn: false,
@@ -127,16 +130,9 @@ export default {
                 this.$router.push("/setup");
             });
 
-            socket.on("autoLogin", (monitorID, data) => {
-                this.loggedIn = true;
-                this.storage().token = "autoLogin";
-                this.socket.token = "autoLogin";
-                this.allowLoginDialog = false;
-            });
-
             socket.on("loginRequired", () => {
                 let token = this.storage().token;
-                if (token && token !== "autoLogin") {
+                if (token) {
                     this.loginByToken(token);
                 } else {
                     this.$root.storage().removeItem("token");
@@ -201,6 +197,16 @@ export default {
                 this.remoteBrowserList = data;
             });
 
+            socket.on("currentUser", (data) => {
+                this.currentUser = data;
+                this.accentColor = data?.accentColor || this.accentColor;
+
+                if (this.pendingLandingRedirect) {
+                    this.pendingLandingRedirect = false;
+                    this.goToLandingPage(data?.landingPage);
+                }
+            });
+
             socket.on("heartbeat", (data) => {
                 if (!(data.monitorID in this.heartbeatList)) {
                     this.heartbeatList[data.monitorID] = [];
@@ -216,16 +222,22 @@ export default {
                 // Also toast
                 if (data.important) {
                     if (this.monitorList[data.monitorID] !== undefined) {
+                        const name = this.monitorList[data.monitorID].name;
+                        const own = heartbeatStatusMeta(this.monitorList[data.monitorID].type, data);
+                        const body = own ? stripStatusPrefix(data.msg) : data.msg;
+
                         if (data.status === 0) {
-                            toast.error(`[${this.monitorList[data.monitorID].name}] [DOWN] ${data.msg}`, {
+                            toast.error(`[${name}] [${own ? own.label : "DOWN"}] ${body}`, {
                                 timeout: getToastErrorTimeout(),
                             });
                         } else if (data.status === 1) {
-                            toast.success(`[${this.monitorList[data.monitorID].name}] [Up] ${data.msg}`, {
+                            toast.success(`[${name}] [${own ? own.label : "Up"}] ${body}`, {
                                 timeout: getToastSuccessTimeout(),
                             });
+                        } else if (own) {
+                            toast(`[${name}] [${own.label}] ${body}`);
                         } else {
-                            toast(`[${this.monitorList[data.monitorID].name}] ${data.msg}`);
+                            toast(`[${name}] ${body}`);
                         }
                     }
 
@@ -333,7 +345,7 @@ export default {
         getJWTPayload() {
             const jwtToken = this.$root.storage().token;
 
-            if (jwtToken && jwtToken !== "autoLogin") {
+            if (jwtToken) {
                 return jwtDecode(jwtToken);
             }
             return undefined;
@@ -423,10 +435,7 @@ export default {
                     }
 
                     if (res.ok) {
-                        this.storage().token = res.token;
-                        this.socket.token = res.token;
-                        this.loggedIn = true;
-                        this.username = this.getJWTPayload()?.username;
+                        this.acceptLogin(res.token);
 
                         // Trigger Chrome Save Password
                         history.pushState({}, "");
@@ -435,6 +444,35 @@ export default {
                     callback(res);
                 }
             );
+        },
+
+        /**
+         * Take the token a successful sign-in produced.
+         *
+         * Shared with the passkey path, which reaches the same place without a
+         * username or a password having been typed.
+         * @param {string} token The JWT
+         * @returns {void}
+         */
+        acceptLogin(token) {
+            this.storage().token = token;
+            this.socket.token = token;
+            this.loggedIn = true;
+            this.username = this.getJWTPayload()?.username;
+            this.pendingLandingRedirect = true;
+        },
+
+        /**
+         * Go wherever this account has asked to land after logging in.
+         * @param {string} landingPage "dashboard", or "statusPage-<slug>"
+         * @returns {void}
+         */
+        goToLandingPage(landingPage) {
+            if (typeof landingPage === "string" && landingPage.startsWith("statusPage-")) {
+                this.$router.push("/status/" + landingPage.replace("statusPage-", ""));
+                return;
+            }
+            this.$router.push("/dashboard");
         },
 
         /**
@@ -465,6 +503,8 @@ export default {
             this.socket.token = null;
             this.loggedIn = false;
             this.username = null;
+            this.currentUser = null;
+            this.pendingLandingRedirect = false;
             this.clearData();
         },
 
@@ -733,6 +773,14 @@ export default {
     },
 
     computed: {
+        /**
+         * Whether this account may administer the instance.
+         * @returns {boolean} True for an administrator
+         */
+        isAdmin() {
+            return !!this.currentUser?.isAdmin;
+        },
+
         usernameFirstChar() {
             if (typeof this.username == "string" && this.username.length >= 1) {
                 return this.username.charAt(0).toUpperCase();
@@ -763,8 +811,16 @@ export default {
             for (let monitorID in this.lastHeartbeatList) {
                 let lastHeartBeat = this.lastHeartbeatList[monitorID];
 
+                let ownStatus = heartbeatStatusMeta(this.monitorList[monitorID]?.type, lastHeartBeat);
+
                 if (!lastHeartBeat) {
                     result[monitorID] = unknown;
+                } else if (ownStatus) {
+                    result[monitorID] = {
+                        text: ownStatus.label,
+                        color: ownStatus.color,
+                        own: true,
+                    };
                 } else if (lastHeartBeat.status === UP) {
                     result[monitorID] = {
                         text: this.$t("Up"),

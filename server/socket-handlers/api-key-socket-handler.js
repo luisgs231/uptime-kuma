@@ -30,6 +30,16 @@ module.exports.apiKeySocketHandler = (socket) => {
             // Append key ID and prefix to start of key separated by _, used to get
             // correct hash when validating key.
             let formattedKey = "uk" + bean.id + "_" + clearKey;
+
+            // Only kept in full if the account asked for it. Off by default:
+            // storing it means a database copy carries a working key, where
+            // otherwise it carries a bcrypt hash and nothing usable. The id is
+            // only known once the row exists, so this is a second write.
+            if (key.recoverable) {
+                bean.key_plain = formattedKey;
+                await R.store(bean);
+            }
+
             await sendAPIKeyList(socket);
 
             // Enable API auth if the user creates a key, otherwise only basic
@@ -98,7 +108,7 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Disabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 0 WHERE id = ? ", [keyID]);
+            await R.exec("UPDATE api_key SET active = 0 WHERE id = ? AND user_id = ? ", [ keyID, socket.userID ]);
 
             apicache.clear();
 
@@ -123,7 +133,7 @@ module.exports.apiKeySocketHandler = (socket) => {
 
             log.debug("apikeys", `Enabled Key: ${keyID} User ID: ${socket.userID}`);
 
-            await R.exec("UPDATE api_key SET active = 1 WHERE id = ? ", [keyID]);
+            await R.exec("UPDATE api_key SET active = 1 WHERE id = ? AND user_id = ? ", [ keyID, socket.userID ]);
 
             apicache.clear();
 

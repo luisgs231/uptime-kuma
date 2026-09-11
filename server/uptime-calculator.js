@@ -27,6 +27,12 @@ class UptimeCalculator {
     monitorID;
 
     /**
+     * Whether a PENDING beat counts as neither up nor down.
+     * @type {boolean}
+     */
+    neutralPending = false;
+
+    /**
      * Recent 24-hour uptime, each item is a 1-minute interval
      * Key: {number} DivisionKey
      * @type {LimitQueue<number,string>}
@@ -232,6 +238,11 @@ class UptimeCalculator {
             minutelyData.maintenance = minutelyData.maintenance ? minutelyData.maintenance + 1 : 1;
             hourlyData.maintenance = hourlyData.maintenance ? hourlyData.maintenance + 1 : 1;
             dailyData.maintenance = dailyData.maintenance ? dailyData.maintenance + 1 : 1;
+        } else if (status === PENDING && this.neutralPending) {
+            // Counted as neither. A monitor type with statuses of its own uses
+            // PENDING for a state that is degraded rather than off, and calling
+            // that downtime would put a pair that never stopped carrying
+            // traffic at 0%.
         } else if (flatStatus === UP) {
             minutelyData.up += 1;
             hourlyData.up += 1;

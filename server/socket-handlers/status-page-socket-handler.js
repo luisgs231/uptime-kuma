@@ -1,5 +1,6 @@
 const { R } = require("redbean-node");
 const { checkLogin } = require("../util-server");
+const { requireOwnedStatusPage } = require("../ownership");
 const dayjs = require("dayjs");
 const { log } = require("../../src/util");
 const ImageDataURI = require("../image-data-uri");
@@ -25,6 +26,18 @@ function validateIncident(incident) {
 }
 
 /**
+ * Resolve a slug to the id of a status page this account owns.
+ * @param {string} slug Status page slug
+ * @param {Socket} socket Socket of the account asking
+ * @returns {Promise<number>} The status page id
+ * @throws It does not exist, or belongs to somebody else
+ */
+async function ownedStatusPageID(slug, socket) {
+    const bean = await requireOwnedStatusPage(slug, socket.userID);
+    return bean.id;
+}
+
+/**
  * Socket handlers for status page
  * @param {Socket} socket Socket.io instance to add listeners on
  * @returns {void}
@@ -35,11 +48,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
-
-            if (!statusPageID) {
-                throw new Error("slug is not found");
-            }
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             let incidentBean;
 
@@ -85,7 +94,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             await R.exec("UPDATE incident SET pin = 0 WHERE pin = 1 AND status_page_id = ? ", [statusPageID]);
 
@@ -125,15 +134,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
-            if (!statusPageID) {
-                callback({
-                    ok: false,
-                    msg: "slug is not found",
-                    msgi18n: true,
-                });
-                return;
-            }
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
             if (!bean) {
@@ -188,15 +189,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
-            if (!statusPageID) {
-                callback({
-                    ok: false,
-                    msg: "slug is not found",
-                    msgi18n: true,
-                });
-                return;
-            }
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
             if (!bean) {
@@ -228,15 +221,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
-            if (!statusPageID) {
-                callback({
-                    ok: false,
-                    msg: "slug is not found",
-                    msgi18n: true,
-                });
-                return;
-            }
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             let bean = await R.findOne("incident", " id = ? AND status_page_id = ? ", [incidentID, statusPageID]);
             if (!bean) {
@@ -269,11 +254,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
-
-            if (!statusPage) {
-                throw new Error("No slug?");
-            }
+            let statusPage = await requireOwnedStatusPage(slug, socket.userID);
 
             callback({
                 ok: true,
@@ -294,13 +275,11 @@ module.exports.statusPageSocketHandler = (socket) => {
             checkLogin(socket);
 
             // Save Config
-            let statusPage = await R.findOne("status_page", " slug = ? ", [slug]);
-
-            if (!statusPage) {
-                throw new Error("No slug?");
-            }
+            let statusPage = await requireOwnedStatusPage(slug, socket.userID);
 
             checkSlug(config.slug);
+            // Renaming a page onto a slug somebody else already has.
+            await checkSlugAvailable(config.slug, statusPage.id);
 
             const header = "data:image/png;base64,";
 
@@ -454,8 +433,10 @@ module.exports.statusPageSocketHandler = (socket) => {
             slug = slug.toLowerCase();
 
             checkSlug(slug);
+            await checkSlugAvailable(slug);
 
             let statusPage = R.dispense("status_page");
+            statusPage.user_id = socket.userID;
             statusPage.slug = slug;
             statusPage.title = title;
             statusPage.theme = "auto";
@@ -485,7 +466,7 @@ module.exports.statusPageSocketHandler = (socket) => {
         try {
             checkLogin(socket);
 
-            let statusPageID = await StatusPage.slugToID(slug);
+            let statusPageID = await ownedStatusPageID(slug, socket);
 
             if (statusPageID) {
                 // Reset entry page if it is the default one.
@@ -522,6 +503,21 @@ module.exports.statusPageSocketHandler = (socket) => {
         }
     });
 };
+
+/**
+ * Check that a slug is not already in use.
+ * @param {string} slug Slug to test
+ * @param {number|null} excludeID Status page allowed to already hold it
+ * @returns {Promise<void>} Promise
+ * @throws The slug is taken
+ */
+async function checkSlugAvailable(slug, excludeID = null) {
+    const existing = await R.findOne("status_page", " slug = ? ", [ slug ]);
+
+    if (existing && (excludeID === null || existing.id !== excludeID)) {
+        throw new Error("This slug is already taken. Please choose another one.");
+    }
+}
 
 /**
  * Check slug a-z, 0-9, - only

@@ -10,7 +10,11 @@ const { R } = require("redbean-node");
 const apicache = require("../modules/apicache");
 const Monitor = require("../model/monitor");
 const dayjs = require("dayjs");
-const { UP, MAINTENANCE, DOWN, PENDING, flipStatus, log, badgeConstants } = require("../../src/util");
+const { UP, MAINTENANCE, DOWN, PENDING, flipStatus, log, badgeConstants, SQL_DATETIME_FORMAT } = require("../../src/util");
+const { apiAuth, requestOwner } = require("../auth");
+// Loaded here rather than relied on from elsewhere: whichever module happens to
+// have extended dayjs first is not something this file should depend on.
+dayjs.extend(require("dayjs/plugin/utc"));
 const StatusPage = require("../model/status_page");
 const { UptimeKumaServer } = require("../uptime-kuma-server");
 const { makeBadge } = require("badge-maker");
@@ -24,6 +28,107 @@ let router = express.Router();
 let cache = apicache.middleware;
 const server = UptimeKumaServer.getInstance();
 let io = server.io;
+
+/** Heartbeats per monitor when the caller does not ask for a number. */
+const DEFAULT_HISTORY_LIMIT = 100;
+
+/** Ceiling on what one request may ask for. */
+const MAX_HISTORY_LIMIT = 1000;
+
+/**
+ * Read the heartbeat history query parameters.
+ *
+ * `since` is compared at whole-second granularity on purpose. heartbeat.time
+ * keeps milliseconds on SQLite but MariaDB stores it as DATETIME and truncates
+ * them, so a sub-second bound answers differently on the two engines. Flooring
+ * to the second is the one reading both agree on.
+ * @param {object} query request.query
+ * @returns {{limit: number, since: (string|null), important: boolean, error: (string|null)}} Parsed query
+ */
+function parseHistoryQuery(query) {
+    let limit = DEFAULT_HISTORY_LIMIT;
+    if (query.limit !== undefined) {
+        const asked = parseInt(query.limit, 10);
+        if (!Number.isFinite(asked) || asked < 1) {
+            return { error: "limit must be a positive integer" };
+        }
+        limit = Math.min(asked, MAX_HISTORY_LIMIT);
+    }
+
+    let since = null;
+    if (query.since !== undefined) {
+        const parsed = dayjs(query.since);
+        if (!parsed.isValid()) {
+            return { error: "since must be an ISO 8601 instant" };
+        }
+        // Whatever offset came in, the column is UTC.
+        since = parsed.utc().startOf("second").format(SQL_DATETIME_FORMAT);
+    }
+
+    const important = [ "1", "true", "yes" ].includes(String(query.important).toLowerCase());
+
+    return { limit,
+        since,
+        important,
+        error: null };
+}
+
+// Heartbeat history for the monitors of whichever account presented the key.
+// Nothing else is reachable through it: no other account's monitors, and no
+// status page involved.
+router.get("/api/monitors/heartbeats", apiAuth, async (request, response) => {
+    allowDevAllOrigin(response);
+
+    try {
+        const userID = await requestOwner(request);
+        if (!userID) {
+            sendHttpError(response, "Unable to identify the account behind this key");
+            return;
+        }
+
+        const query = parseHistoryQuery(request.query);
+        if (query.error) {
+            response.status(400).json({ status: "fail",
+                msg: query.error });
+            return;
+        }
+
+        const monitors = await R.getAll("SELECT id, name, type FROM monitor WHERE user_id = ? ORDER BY id", [userID]);
+
+        const heartbeatList = {};
+        for (const monitor of monitors) {
+            let sql = "SELECT * FROM heartbeat WHERE monitor_id = ?";
+            const params = [monitor.id];
+
+            if (query.since) {
+                sql += " AND time >= ?";
+                params.push(query.since);
+            }
+            if (query.important) {
+                sql += " AND important = 1";
+            }
+            sql += ` ORDER BY time DESC LIMIT ${query.limit}`;
+
+            const rows = await R.getAll(sql, params);
+            heartbeatList[monitor.id] = rows.reverse().map((row) => ({
+                status: row.status,
+                time: row.time,
+                msg: row.msg ?? "",
+                ping: row.ping,
+                important: !!row.important,
+            }));
+        }
+
+        response.json({
+            monitors: monitors.map((m) => ({ id: m.id,
+                name: m.name,
+                type: m.type })),
+            heartbeatList,
+        });
+    } catch (error) {
+        sendHttpError(response, error.message);
+    }
+});
 
 router.get("/api/entry-page", async (request, response) => {
     allowDevAllOrigin(response);
