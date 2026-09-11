@@ -38,7 +38,7 @@ export default {
 
 .tag-valid {
     padding: 2px 25px;
-    background-color: $primary;
+    background-color: $accent;
 }
 
 .tag-invalid {

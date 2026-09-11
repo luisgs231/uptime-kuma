@@ -5,7 +5,7 @@ const {
     PING_GLOBAL_TIMEOUT_DEFAULT,
     PING_PER_REQUEST_TIMEOUT_DEFAULT,
 } = require("../../src/util");
-const { Settings } = require("../settings");
+const { UserSettings } = require("../user-settings");
 const { ping, checkStatusCode } = require("../util-server");
 const axios = require("axios");
 const crypto = require("crypto");
@@ -22,7 +22,7 @@ class SteamMonitorType extends MonitorType {
      * @param {object} options Optional dependencies for tests.
      * @param {object} options.steamApiClient Axios-compatible Steam API client.
      * @param {Function} options.lookup DNS lookup function.
-     * @param {Function} options.getSteamAPIKey Steam API key provider.
+     * @param {Function} options.getSteamAPIKey Steam API key provider, given the monitor's owner.
      * @param {Function} options.ping Steam server ping function.
      */
     constructor(options = {}) {
@@ -30,7 +30,7 @@ class SteamMonitorType extends MonitorType {
 
         this.steamApiClient = options.steamApiClient || axios;
         this.lookup = options.lookup || dns.lookup;
-        this.getSteamAPIKey = options.getSteamAPIKey || (() => Settings.get("steamAPIKey"));
+        this.getSteamAPIKey = options.getSteamAPIKey || ((userID) => UserSettings.resolve(userID, "steamAPIKey"));
         this.ping = options.ping || ping;
     }
 
@@ -39,7 +39,7 @@ class SteamMonitorType extends MonitorType {
      */
     async check(monitor, heartbeat) {
         const steamApiUrl = "https://api.steampowered.com/IGameServersService/GetServerList/v1/";
-        const steamAPIKey = await this.getSteamAPIKey();
+        const steamAPIKey = await this.getSteamAPIKey(monitor.user_id);
 
         if (!steamAPIKey) {
             throw new Error("Steam API Key not found");

@@ -87,7 +87,7 @@
             </div>
 
             <div class="text-center mt-3" style="font-size: 13px">
-                <a href="https://github.com/louislam/uptime-kuma/wiki/Maintenance" target="_blank">
+                <a href="https://github.com/luisgs231/uptime-kuma/wiki/Maintenance" target="_blank">
                     {{ $t("Learn More") }}
                 </a>
             </div>
@@ -261,7 +261,7 @@ export default {
 
     &.scheduled {
         .circle {
-            background-color: $primary;
+            background-color: $accent;
         }
     }
 

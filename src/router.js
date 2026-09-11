@@ -19,6 +19,7 @@ import DockerHosts from "./components/settings/Docker.vue";
 import ManageMaintenance from "./pages/ManageMaintenance.vue";
 import APIKeys from "./components/settings/APIKeys.vue";
 import SetupDatabase from "./pages/SetupDatabase.vue";
+const DmarcDetails = () => import("./pages/DmarcDetails.vue");
 
 // Settings - Sub Pages
 import Appearance from "./components/settings/Appearance.vue";
@@ -30,6 +31,7 @@ import MonitorHistory from "./components/settings/MonitorHistory.vue";
 const Security = () => import("./components/settings/Security.vue");
 import Proxies from "./components/settings/Proxies.vue";
 import About from "./components/settings/About.vue";
+import Users from "./components/settings/Users.vue";
 import RemoteBrowsers from "./components/settings/RemoteBrowsers.vue";
 
 const routes = [
@@ -64,6 +66,10 @@ const routes = [
                                     {
                                         path: "/edit/:id",
                                         component: EditMonitor,
+                                    },
+                                    {
+                                        path: "dmarc",
+                                        component: DmarcDetails,
                                     },
                                 ],
                             },
@@ -130,6 +136,10 @@ const routes = [
                             {
                                 path: "proxies",
                                 component: Proxies,
+                            },
+                            {
+                                path: "users",
+                                component: Users,
                             },
                             {
                                 path: "about",

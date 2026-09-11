@@ -1,6 +1,6 @@
 const { MonitorType } = require("./monitor-type");
 const { Globalping, IpVersion } = require("globalping");
-const { Settings } = require("../settings");
+const { UserSettings } = require("../user-settings");
 const { log, UP, evaluateJsonQuery } = require("../../src/util");
 const {
     checkStatusCode,
@@ -36,7 +36,8 @@ class GlobalpingMonitorType extends MonitorType {
      * @inheritdoc
      */
     async check(monitor, heartbeat, _server) {
-        const apiKey = await Settings.get("globalpingApiToken");
+        // The account's own token, falling back to one the admin provides.
+        const apiKey = await UserSettings.resolve(monitor.user_id, "globalpingApiToken");
         const client = new Globalping({
             auth: apiKey,
             agent: this.httpUserAgent,

@@ -11,6 +11,27 @@
             </select>
         </div>
         <div class="my-4">
+            <label class="form-label">Accent colour</label>
+            <p class="form-text mt-0">
+                Saved with your account, not this browser &mdash; everyone sharing this instance picks their own.
+            </p>
+            <div class="accents">
+                <button
+                    v-for="accent in accents"
+                    :key="accent.name"
+                    type="button"
+                    class="accent"
+                    :class="{ chosen: accent.name === $root.accentColor }"
+                    :style="{ '--swatch': accent.hex }"
+                    :title="accent.label"
+                    :aria-label="accent.label"
+                    :aria-pressed="accent.name === $root.accentColor"
+                    @click="choose(accent.name)"
+                ></button>
+            </div>
+        </div>
+
+        <div class="my-4">
             <label for="timezone" class="form-label">{{ $t("Theme") }}</label>
             <div>
                 <div class="btn-group" role="group" :aria-label="$t('Basic checkbox toggle button group')">
@@ -151,11 +172,69 @@
 </template>
 
 <script>
-export default {};
+import { ACCENT_COLORS } from "../../util.ts";
+
+export default {
+    computed: {
+        accents() {
+            return ACCENT_COLORS;
+        },
+    },
+    methods: {
+        /**
+         * Pick an accent, and keep it with the account.
+         *
+         * Applied first so the page changes under the cursor, then saved - an
+         * instance that is slow to answer should not make the click feel dead.
+         * @param {string} name Accent name
+         * @returns {void}
+         */
+        choose(name) {
+            this.$root.accentColor = name;
+            this.$root.getSocket().emit("setAccentColor", name, (res) => {
+                if (!res.ok) {
+                    this.$root.toastError(res.msg);
+                }
+            });
+        },
+    },
+};
 </script>
 
 <style lang="scss" scoped>
 @import "../../assets/vars.scss";
+
+.accents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+
+    .accent {
+        width: 34px;
+        height: 34px;
+        padding: 0;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        background-color: var(--swatch);
+        cursor: pointer;
+        transition: transform 0.15s $easing-in-out;
+
+        &:hover {
+            transform: scale(1.12);
+        }
+
+        // The ring is the page background with the swatch outside it, so the
+        // chosen one reads as chosen on either theme without a tick on top of
+        // a colour it might not contrast with.
+        &.chosen {
+            box-shadow: 0 0 0 3px white, 0 0 0 5px var(--swatch);
+
+            .dark & {
+                box-shadow: 0 0 0 3px $dark-bg, 0 0 0 5px var(--swatch);
+            }
+        }
+    }
+}
 
 .btn-check:active + .btn-outline-primary,
 .btn-check:checked + .btn-outline-primary,

@@ -366,7 +366,7 @@ export default {
 }
 
 .drag-over {
-    border: 4px dashed $primary;
+    border: 4px dashed $accent;
     border-radius: 0.5rem;
     background-color: $highlight-white;
 }

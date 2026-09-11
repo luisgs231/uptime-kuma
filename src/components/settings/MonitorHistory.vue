@@ -17,6 +17,29 @@
             <div v-if="settings.keepDataPeriodDays < 0" class="form-text">
                 {{ $t("dataRetentionTimeError") }}
             </div>
+            <div v-if="ceiling" class="form-text">
+                The administrator has capped retention at
+                <strong>{{ ceiling }}</strong>
+                days. A longer period, or switching deletion off, is stored but the cap is what applies.
+            </div>
+            <div class="form-text">This is yours alone. It does not affect anybody else's history.</div>
+        </div>
+
+        <!-- Admins set the cap everybody is measured against. -->
+        <div v-if="$root.isAdmin" class="my-4">
+            <label for="keepDataPeriodDaysMax" class="form-label">Maximum anybody may keep (days)</label>
+            <input
+                id="keepDataPeriodDaysMax"
+                v-model="settings.keepDataPeriodDaysMax"
+                type="number"
+                class="form-control"
+                min="0"
+                step="1"
+            />
+            <div class="form-text">
+                Zero or blank means no cap. This is what stops one account growing the shared database for
+                everybody &mdash; without it, any account can ask to keep its history forever.
+            </div>
         </div>
         <div class="my-4">
             <button class="btn btn-primary" type="button" @click="saveSettings()">
@@ -75,6 +98,15 @@ export default {
         saveSettings() {
             return this.$parent.$parent.$parent.saveSettings;
         },
+        /**
+         * The cap an administrator has set, if any.
+         * @returns {number|null} Days, or null when there is no cap
+         */
+        ceiling() {
+            const value = Number.parseInt(this.settings.keepDataPeriodDaysMax, 10);
+            return Number.isFinite(value) && value > 0 ? value : null;
+        },
+
         settingsLoaded() {
             return this.$parent.$parent.$parent.settingsLoaded;
         },

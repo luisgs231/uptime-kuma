@@ -192,7 +192,7 @@ class StatusPage extends BeanModel {
         head.append(ogType);
 
         // Preload data
-        // Add jsesc, fix https://github.com/louislam/uptime-kuma/issues/2186
+        // Escape it with jsesc so the data cannot break out of the script tag
         const escapedJSONObject = jsesc(await StatusPage.getStatusPageData(statusPage), {
             isScriptContext: true,
         });
@@ -366,7 +366,7 @@ class StatusPage extends BeanModel {
     static async sendStatusPageList(io, socket) {
         let result = {};
 
-        let list = await R.findAll("status_page", " ORDER BY title ");
+        let list = await R.find("status_page", " user_id = ? ORDER BY title ", [ socket.userID ]);
 
         for (let item of list) {
             result[item.id] = await item.toJSON();

@@ -1,4 +1,5 @@
 const { checkLogin } = require("../util-server");
+const { requireOwnedMonitor } = require("../ownership");
 const { UptimeCalculator } = require("../uptime-calculator");
 const { log } = require("../../src/util");
 
@@ -8,6 +9,8 @@ module.exports.chartSocketHandler = (socket) => {
             checkLogin(socket);
 
             log.debug("monitor", `Get Monitor Chart Data: ${monitorID} User ID: ${socket.userID}`);
+
+            await requireOwnedMonitor(monitorID, socket.userID);
 
             if (period == null) {
                 throw new Error("Invalid period.");

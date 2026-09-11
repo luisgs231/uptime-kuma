@@ -7,6 +7,7 @@ const { UptimeKumaServer } = require("./uptime-kuma-server");
 const server = UptimeKumaServer.getInstance();
 const io = server.io;
 const { setting } = require("./util-server");
+const { UserSettings } = require("./user-settings");
 const checkVersion = require("./check-version");
 const Database = require("./database");
 
@@ -116,6 +117,26 @@ async function sendProxyList(socket) {
 }
 
 /**
+ * Tell a client who it is logged in as.
+ * @param {Socket} socket Socket.io socket instance
+ * @returns {Promise<void>}
+ */
+async function sendCurrentUser(socket) {
+    const user = await R.findOne("user", " id = ? ", [ socket.userID ]);
+    if (!user) {
+        return;
+    }
+
+    socket.emit("currentUser", {
+        id: user.id,
+        username: user.username,
+        isAdmin: !!user.is_admin,
+        landingPage: await UserSettings.resolve(user.id, "landingPage"),
+        accentColor: await UserSettings.resolve(user.id, "accentColor"),
+    });
+}
+
+/**
  * Emit API key list to client
  * @param {Socket} socket Socket.io socket instance
  * @returns {Promise<void>}
@@ -150,7 +171,6 @@ async function sendInfo(socket, hideVersion = false) {
     };
     if (!hideVersion) {
         info.version = checkVersion.version;
-        info.latestVersion = checkVersion.latestVersion;
         info.isContainer = process.env.UPTIME_KUMA_IS_CONTAINER === "1";
         info.dbType = Database.dbConfig.type;
         info.runtime = {
@@ -236,6 +256,7 @@ async function sendMonitorTypeList(socket) {
 }
 
 module.exports = {
+    sendCurrentUser,
     sendNotificationList,
     sendImportantHeartbeatList,
     sendHeartbeatList,

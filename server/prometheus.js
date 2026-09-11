@@ -9,6 +9,16 @@ let monitorAverageResponseTimeSeconds = null;
 let monitorResponseTime = null;
 let monitorStatus = null;
 
+/** The gauges that describe monitors, and the only ones /metrics serves. */
+const MONITOR_METRIC_NAMES = [
+    "monitor_cert_days_remaining",
+    "monitor_cert_is_valid",
+    "monitor_uptime_ratio",
+    "monitor_response_time_seconds",
+    "monitor_response_time",
+    "monitor_status",
+];
+
 class Prometheus {
     monitorLabelValues = {};
 
@@ -97,8 +107,51 @@ class Prometheus {
     }
 
     /**
+     * Render the metrics page for one account.
+     *
+     * Everything /metrics has always served is still served - the node default
+     * metrics, app_version and the http_* histograms all describe the instance
+     * rather than anybody's monitors, and are left exactly as they were.
+     *
+     * The one thing that is filtered is the monitor_* series, which live in a
+     * single process-wide registry shared by every account. Those are dropped
+     * unless the monitor belongs to the caller.
+     *
+     * This filters the rendered text rather than rebuilding a registry: a
+     * rebuild would have to reconstruct histograms and counters faithfully,
+     * and getting that subtly wrong is a worse outcome than a line filter.
+     * @param {number[]} monitorIDs The account's monitor ids
+     * @returns {Promise<{contentType: string, body: string}>} The rendered metrics
+     */
+    static async renderForMonitors(monitorIDs) {
+        const allowed = new Set(monitorIDs.map(String));
+        const rendered = await PrometheusClient.register.metrics();
+
+        const kept = rendered.split("\n").filter((line) => {
+            // Comments, HELP/TYPE headers and blanks are not samples.
+            if (line === "" || line.startsWith("#")) {
+                return true;
+            }
+
+            const brace = line.indexOf("{");
+            const space = line.indexOf(" ");
+            const end = brace === -1 ? space : Math.min(brace, space === -1 ? brace : space);
+            const name = end === -1 ? line : line.slice(0, end);
+
+            if (!MONITOR_METRIC_NAMES.includes(name)) {
+                return true;
+            }
+
+            const id = line.match(/monitor_id="(\d+)"/);
+            return id !== null && allowed.has(id[1]);
+        });
+
+        return { contentType: PrometheusClient.register.contentType,
+            body: kept.join("\n") };
+    }
+
+    /**
      * Sanitize a string to ensure it can be used as a Prometheus label or value.
-     * See https://github.com/louislam/uptime-kuma/pull/4704#issuecomment-2366524692
      * @param {string} text The text to sanitize
      * @returns {string} The sanitized text
      */

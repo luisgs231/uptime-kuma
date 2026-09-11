@@ -21,7 +21,6 @@
                         v-model="password"
                         :placeholder="$t('Password')"
                         autocomplete="current-password"
-                        :required="true"
                     />
                 </div>
 
@@ -61,6 +60,22 @@
                     {{ $t("Login") }}
                 </button>
 
+                <template v-if="passkeyAvailable && !tokenRequired">
+                    <div class="separator">
+                        <span>{{ $t("or") }}</span>
+                    </div>
+
+                    <button
+                        class="w-100 btn btn-outline-primary"
+                        type="button"
+                        :disabled="processing"
+                        @click="signInWithPasskey"
+                    >
+                        <font-awesome-icon icon="fingerprint" class="me-1" />
+                        Sign in with a passkey
+                    </button>
+                </template>
+
                 <div v-if="res && !res.ok" class="alert alert-danger mt-3" role="alert">
                     {{ $t(res.msg) }}
                 </div>
@@ -71,6 +86,7 @@
 
 <script>
 import HiddenInput from "./HiddenInput.vue";
+import { startAuthentication } from "@simplewebauthn/browser";
 
 export default {
     components: {
@@ -84,6 +100,7 @@ export default {
             token: "",
             res: null,
             tokenRequired: false,
+            passkeyAvailable: false,
         };
     },
 
@@ -99,6 +116,12 @@ export default {
 
     mounted() {
         document.title += " - Login";
+
+        // Never offer a button that cannot work: without HTTPS the browser
+        // refuses the ceremony outright.
+        this.$root.getSocket().emit("passkeyAvailable", (res) => {
+            this.passkeyAvailable = res.ok && res.available;
+        });
     },
 
     unmounted() {
@@ -120,6 +143,62 @@ export default {
                     this.tokenRequired = true;
                 } else {
                     this.res = res;
+                }
+            });
+        },
+
+        /**
+         * Sign in with a passkey, without a username being typed.
+         *
+         * The authenticator names the account by handing back a credential, so
+         * there is nothing to fill in first.
+         * @returns {Promise<void>} Promise
+         */
+        async signInWithPasskey() {
+            this.processing = true;
+            this.res = null;
+
+            try {
+                const begun = await this.emit("passkeyLoginBegin");
+                if (!begun.ok) {
+                    throw new Error(begun.msg);
+                }
+
+                const response = await startAuthentication({ optionsJSON: begun.options });
+
+                const done = await this.emit("passkeyLoginFinish", {
+                    ceremonyID: begun.ceremonyID,
+                    response,
+                });
+
+                if (done.ok) {
+                    this.$root.acceptLogin(done.token);
+                } else {
+                    this.res = done;
+                }
+            } catch (e) {
+                // A cancelled prompt is somebody changing their mind.
+                if (e.name !== "NotAllowedError" && e.name !== "AbortError") {
+                    this.res = { ok: false,
+                        msg: e.message };
+                }
+            } finally {
+                this.processing = false;
+            }
+        },
+
+        /**
+         * A socket call with a callback, as a promise.
+         * @param {string} event Event name
+         * @param {any} payload Optional payload
+         * @returns {Promise<object>} The response
+         */
+        emit(event, payload) {
+            return new Promise((resolve) => {
+                if (payload === undefined) {
+                    this.$root.getSocket().emit(event, resolve);
+                } else {
+                    this.$root.getSocket().emit(event, payload, resolve);
                 }
             });
         },

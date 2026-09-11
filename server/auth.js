@@ -39,8 +39,21 @@ exports.login = async function (username, password) {
  * @returns {boolean} API is ok?
  */
 async function verifyAPIKey(key) {
-    if (typeof key !== "string") {
-        return false;
+    return (await resolveAPIKey(key)) !== null;
+}
+
+/**
+ * Resolve a presented API key to the row that issued it.
+ *
+ * Returns the bean rather than a boolean so callers can tell which account is
+ * asking - an API key grants access to its own owner's monitors and nothing
+ * else.
+ * @param {string} key API key to check
+ * @returns {Promise<Bean|null>} The api_key row, or null if it is no good
+ */
+async function resolveAPIKey(key) {
+    if (typeof key !== "string" || !key.startsWith("uk") || !key.includes("_")) {
+        return null;
     }
 
     // uk prefix + key ID is before _
@@ -50,17 +63,57 @@ async function verifyAPIKey(key) {
     let hash = await R.findOne("api_key", " id=? ", [index]);
 
     if (hash === null) {
-        return false;
+        return null;
     }
 
     let current = dayjs();
     let expiry = dayjs(hash.expires);
     if (expiry.diff(current) < 0 || !hash.active) {
-        return false;
+        return null;
     }
 
-    return hash && passwordHash.verify(clear, hash.key);
+    return (await passwordHash.verify(clear, hash.key)) ? hash : null;
 }
+
+/**
+ * The account behind the API key on this request, if any.
+ *
+ * express-basic-auth leaves the presented credentials on req.auth, so the key
+ * can be resolved again in the handler without changing its authorizer.
+ * @param {express.Request} req Express request object
+ * @returns {Promise<number|null>} The owning user id, or null
+ */
+exports.apiKeyOwner = async function (req) {
+    const presented = req?.auth?.password;
+    if (!presented) {
+        return null;
+    }
+    const bean = await resolveAPIKey(presented);
+    return bean ? bean.user_id : null;
+};
+
+/**
+ * The account behind an already-authenticated request.
+ *
+ * apiAuth accepts either an API key or, when no keys exist, a username and
+ * password. Either way the credentials have already been checked by the time a
+ * handler runs, so the username only has to be resolved to an id here.
+ * @param {express.Request} req Express request object
+ * @returns {Promise<number|null>} The account id, or null
+ */
+exports.requestOwner = async function (req) {
+    const owner = await exports.apiKeyOwner(req);
+    if (owner) {
+        return owner;
+    }
+
+    const username = req?.auth?.user;
+    if (!username) {
+        return null;
+    }
+    const user = await R.findOne("user", "TRIM(username) = ? AND active = 1 ", [String(username).trim()]);
+    return user ? user.id : null;
+};
 
 /**
  * Callback for basic auth authorizers
@@ -123,7 +176,7 @@ function userAuthorizer(username, password, callback) {
 }
 
 /**
- * Use basic auth if auth is not disabled
+ * Use basic auth
  * @param {express.Request} req Express request object
  * @param {express.Response} res Express response object
  * @param {express.NextFunction} next Next handler in chain
@@ -136,13 +189,7 @@ exports.basicAuth = async function (req, res, next) {
         challenge: true,
     });
 
-    const disabledAuth = await Settings.get("disableAuth");
-
-    if (!disabledAuth) {
-        middleware(req, res, next);
-    } else {
-        next();
-    }
+    middleware(req, res, next);
 };
 
 /**
@@ -153,24 +200,20 @@ exports.basicAuth = async function (req, res, next) {
  * @returns {Promise<void>}
  */
 exports.apiAuth = async function (req, res, next) {
-    if (!(await Settings.get("disableAuth"))) {
-        let usingAPIKeys = await Settings.get("apiKeysEnabled");
-        let middleware;
-        if (usingAPIKeys) {
-            middleware = basicAuth({
-                authorizer: apiAuthorizer,
-                authorizeAsync: true,
-                challenge: true,
-            });
-        } else {
-            middleware = basicAuth({
-                authorizer: userAuthorizer,
-                authorizeAsync: true,
-                challenge: true,
-            });
-        }
-        middleware(req, res, next);
+    let usingAPIKeys = await Settings.get("apiKeysEnabled");
+    let middleware;
+    if (usingAPIKeys) {
+        middleware = basicAuth({
+            authorizer: apiAuthorizer,
+            authorizeAsync: true,
+            challenge: true,
+        });
     } else {
-        next();
+        middleware = basicAuth({
+            authorizer: userAuthorizer,
+            authorizeAsync: true,
+            challenge: true,
+        });
     }
+    middleware(req, res, next);
 };

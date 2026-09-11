@@ -5,7 +5,7 @@
                 {{ $root.connectionErrorMsg }}
                 <div v-if="$root.showReverseProxyGuide">
                     {{ $t("Using a Reverse Proxy?") }}
-                    <a href="https://github.com/louislam/uptime-kuma/wiki/Reverse-Proxy" target="_blank">
+                    <a href="https://github.com/luisgs231/uptime-kuma/wiki/Reverse-Proxy" target="_blank">
                         {{ $t("Check how to config it for WebSocket") }}
                     </a>
                 </div>
@@ -18,19 +18,9 @@
                 to="/dashboard"
                 class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-dark text-decoration-none"
             >
-                <object class="bi me-2 ms-4" width="40" height="40" data="/icon.svg" />
+                <object class="bi me-2 ms-4" width="40" height="40" :data="$root.iconUrl || '/icon.svg'" />
                 <span class="fs-4 title">{{ $t("Uptime Kuma") }}</span>
             </router-link>
-
-            <a
-                v-if="hasNewVersion"
-                target="_blank"
-                href="https://github.com/louislam/uptime-kuma/releases"
-                class="btn btn-primary me-3"
-            >
-                <font-awesome-icon icon="arrow-alt-circle-up" />
-                {{ $t("New Update") }}
-            </a>
 
             <ul class="nav nav-pills">
                 <li v-if="$root.loggedIn" class="nav-item me-2">
@@ -96,7 +86,7 @@
 
                             <li>
                                 <a
-                                    href="https://github.com/louislam/uptime-kuma/wiki"
+                                    href="https://github.com/luisgs231/uptime-kuma/wiki"
                                     class="dropdown-item"
                                     target="_blank"
                                 >
@@ -105,7 +95,7 @@
                                 </a>
                             </li>
 
-                            <li v-if="$root.loggedIn && $root.socket.token !== 'autoLogin'">
+                            <li v-if="$root.loggedIn">
                                 <button class="dropdown-item" @click="$root.logout">
                                     <font-awesome-icon icon="sign-out-alt" />
                                     {{ $t("Logout") }}
@@ -120,7 +110,7 @@
         <!-- Mobile header -->
         <header v-else class="d-flex flex-wrap justify-content-center pt-2 pb-2 mb-3">
             <router-link to="/dashboard" class="d-flex align-items-center text-dark text-decoration-none">
-                <object class="bi" width="40" height="40" data="/icon.svg" />
+                <object class="bi" width="40" height="40" :data="$root.iconUrl || '/icon.svg'" />
                 <span class="fs-4 title ms-2">Uptime Kuma</span>
             </router-link>
         </header>
@@ -167,7 +157,6 @@
 
 <script>
 import Login from "../components/Login.vue";
-import compareVersions from "compare-versions";
 import { useToast } from "vue-toastification";
 const toast = useToast();
 
@@ -191,14 +180,6 @@ export default {
             classes[this.$root.theme] = true;
             classes["mobile"] = this.$root.isMobile;
             return classes;
-        },
-
-        hasNewVersion() {
-            if (this.$root.info.latestVersion && this.$root.info.version) {
-                return compareVersions(this.$root.info.latestVersion, this.$root.info.version) >= 1;
-            } else {
-                return false;
-            }
         },
     },
 
@@ -242,11 +223,11 @@ export default {
 
 .nav-link {
     &:hover {
-        background-color: $primary;
+        background-color: $accent;
         color: #fff;
 
         .dark & {
-            background-color: $primary;
+            background-color: $accent;
             color: #000;
         }
 
@@ -288,7 +269,7 @@ export default {
 
         &.router-link-exact-active,
         &.active {
-            color: $primary;
+            color: $accent;
             font-weight: bold;
         }
 
@@ -384,7 +365,7 @@ main {
         align-items: center;
         justify-content: center;
         color: white;
-        background-color: $primary;
+        background-color: $accent;
         width: 24px;
         height: 24px;
         margin-right: 5px;

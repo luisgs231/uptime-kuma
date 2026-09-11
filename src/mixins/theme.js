@@ -1,3 +1,5 @@
+import { DEFAULT_ACCENT, accentHex, iconDataUrl } from "../util.ts";
+
 export default {
     data() {
         return {
@@ -6,6 +8,14 @@ export default {
             userHeartbeatBar: localStorage.heartbeatBarTheme,
             styleElapsedTime: localStorage.styleElapsedTime,
             statusPageTheme: "light",
+            // Per account rather than per browser: two people sharing an
+            // instance should see their own colour wherever they sign in.
+            accentColor: DEFAULT_ACCENT,
+            // The logo and the favicon, redrawn in the accent. Empty until the
+            // source has been read, which is why the markup falls back to the
+            // file on disk.
+            iconUrl: "",
+            iconSource: "",
             forceStatusPageTheme: false,
             path: "",
         };
@@ -28,7 +38,9 @@ export default {
         }
 
         document.body.classList.add(this.theme);
+        this.applyAccent();
         this.updateThemeColorMeta();
+        this.loadIcon();
     },
 
     computed: {
@@ -87,6 +99,11 @@ export default {
             localStorage.heartbeatBarTheme = to;
         },
 
+        accentColor() {
+            this.applyAccent();
+            this.updateThemeColorMeta();
+        },
+
         heartbeatBarTheme(to, from) {
             document.body.classList.remove(from);
             document.body.classList.add(this.heartbeatBarTheme);
@@ -95,6 +112,48 @@ export default {
 
     methods: {
         /**
+         * Paint the interface in this account's accent.
+         *
+         * One custom property on the root element: every rule that shows the
+         * accent reads it, so the whole page follows without a reload.
+         * @returns {void}
+         */
+        applyAccent() {
+            document.documentElement.style.setProperty("--accent", accentHex(this.accentColor));
+            this.applyIcon();
+        },
+
+        /**
+         * Read the icon once, so it can be redrawn without fetching again.
+         * @returns {Promise<void>} Promise
+         */
+        async loadIcon() {
+            try {
+                const res = await fetch("/icon.svg");
+                this.iconSource = await res.text();
+                this.applyIcon();
+            } catch (e) {
+                // The shipped file stays in place; only the recolouring is lost.
+            }
+        },
+
+        /**
+         * Redraw the logo and the favicon in this account's accent.
+         * @returns {void}
+         */
+        applyIcon() {
+            if (!this.iconSource) {
+                return;
+            }
+            this.iconUrl = iconDataUrl(this.iconSource, accentHex(this.accentColor));
+
+            const link = document.querySelector("link[rel='icon']");
+            if (link) {
+                link.setAttribute("href", this.iconUrl);
+            }
+        },
+
+        /**
          * Update the theme color meta tag
          * @returns {void}
          */
@@ -102,7 +161,7 @@ export default {
             if (this.theme === "dark") {
                 document.querySelector("#theme-color").setAttribute("content", "#161B22");
             } else {
-                document.querySelector("#theme-color").setAttribute("content", "#5cdd8b");
+                document.querySelector("#theme-color").setAttribute("content", accentHex(this.accentColor));
             }
         },
     },

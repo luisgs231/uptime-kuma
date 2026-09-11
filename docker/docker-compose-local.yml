@@ -1,0 +1,14 @@
+# Compose file for this fork.
+
+services:
+  uptime-kuma:
+    image: uptime-kuma:local
+    container_name: uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime-kuma-data:/app/data
+    ports:
+      - "3001:3001"
+
+volumes:
+  uptime-kuma-data:

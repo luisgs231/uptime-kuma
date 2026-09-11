@@ -11,7 +11,28 @@
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CONSOLE_STYLE_FgViolet = exports.CONSOLE_STYLE_FgLightBlue = exports.CONSOLE_STYLE_FgLightGreen = exports.CONSOLE_STYLE_FgOrange = exports.CONSOLE_STYLE_FgGray = exports.CONSOLE_STYLE_FgWhite = exports.CONSOLE_STYLE_FgCyan = exports.CONSOLE_STYLE_FgMagenta = exports.CONSOLE_STYLE_FgBlue = exports.CONSOLE_STYLE_FgYellow = exports.CONSOLE_STYLE_FgGreen = exports.CONSOLE_STYLE_FgRed = exports.CONSOLE_STYLE_FgBlack = exports.CONSOLE_STYLE_Hidden = exports.CONSOLE_STYLE_Reverse = exports.CONSOLE_STYLE_Blink = exports.CONSOLE_STYLE_Underscore = exports.CONSOLE_STYLE_Dim = exports.CONSOLE_STYLE_Bright = exports.CONSOLE_STYLE_Reset = exports.RESPONSE_BODY_LENGTH_MAX = exports.RESPONSE_BODY_LENGTH_DEFAULT = exports.PING_PER_REQUEST_TIMEOUT_DEFAULT = exports.PING_PER_REQUEST_TIMEOUT_MAX = exports.PING_PER_REQUEST_TIMEOUT_MIN = exports.PING_COUNT_DEFAULT = exports.PING_COUNT_MAX = exports.PING_COUNT_MIN = exports.PING_GLOBAL_TIMEOUT_DEFAULT = exports.PING_GLOBAL_TIMEOUT_MAX = exports.PING_GLOBAL_TIMEOUT_MIN = exports.PING_PACKET_SIZE_DEFAULT = exports.PING_PACKET_SIZE_MAX = exports.PING_PACKET_SIZE_MIN = exports.INCIDENT_PAGE_SIZE = exports.MIN_INTERVAL_SECOND = exports.SQL_DATETIME_FORMAT_WITHOUT_SECOND = exports.SQL_DATETIME_FORMAT = exports.SQL_DATE_FORMAT = exports.STATUS_PAGE_MAINTENANCE = exports.STATUS_PAGE_PARTIAL_DOWN = exports.STATUS_PAGE_ALL_UP = exports.STATUS_PAGE_ALL_DOWN = exports.MAINTENANCE = exports.PENDING = exports.UP = exports.DOWN = exports.appName = exports.isNode = exports.isDev = void 0;
-exports.TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD = exports.evaluateJsonQuery = exports.intHash = exports.localToUTC = exports.utcToLocal = exports.utcToISODateTime = exports.isoToUTCDateTime = exports.parseTimeFromTimeObject = exports.parseTimeObject = exports.getMonitorRelativeURL = exports.genSecret = exports.getCryptoRandomInt = exports.getRandomInt = exports.getRandomArbitrary = exports.TimeLogger = exports.log = exports.debug = exports.ucfirst = exports.sleep = exports.flipStatus = exports.badgeConstants = exports.CONSOLE_STYLE_BgGray = exports.CONSOLE_STYLE_BgWhite = exports.CONSOLE_STYLE_BgCyan = exports.CONSOLE_STYLE_BgMagenta = exports.CONSOLE_STYLE_BgBlue = exports.CONSOLE_STYLE_BgYellow = exports.CONSOLE_STYLE_BgGreen = exports.CONSOLE_STYLE_BgRed = exports.CONSOLE_STYLE_BgBlack = exports.CONSOLE_STYLE_FgPink = exports.CONSOLE_STYLE_FgBrown = void 0;
+exports.ICON_COLORS = exports.DEFAULT_ACCENT = exports.ACCENT_COLORS = exports.TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD = exports.TimeLogger = exports.log = exports.badgeConstants = exports.CONSOLE_STYLE_BgGray = exports.CONSOLE_STYLE_BgWhite = exports.CONSOLE_STYLE_BgCyan = exports.CONSOLE_STYLE_BgMagenta = exports.CONSOLE_STYLE_BgBlue = exports.CONSOLE_STYLE_BgYellow = exports.CONSOLE_STYLE_BgGreen = exports.CONSOLE_STYLE_BgRed = exports.CONSOLE_STYLE_BgBlack = exports.CONSOLE_STYLE_FgPink = exports.CONSOLE_STYLE_FgBrown = void 0;
+exports.flipStatus = flipStatus;
+exports.sleep = sleep;
+exports.ucfirst = ucfirst;
+exports.debug = debug;
+exports.getRandomArbitrary = getRandomArbitrary;
+exports.getRandomInt = getRandomInt;
+exports.getCryptoRandomInt = getCryptoRandomInt;
+exports.genSecret = genSecret;
+exports.getMonitorRelativeURL = getMonitorRelativeURL;
+exports.parseTimeObject = parseTimeObject;
+exports.parseTimeFromTimeObject = parseTimeFromTimeObject;
+exports.isoToUTCDateTime = isoToUTCDateTime;
+exports.utcToISODateTime = utcToISODateTime;
+exports.utcToLocal = utcToLocal;
+exports.localToUTC = localToUTC;
+exports.intHash = intHash;
+exports.evaluateJsonQuery = evaluateJsonQuery;
+exports.accentHex = accentHex;
+exports.isAccent = isAccent;
+exports.lighten = lighten;
+exports.iconDataUrl = iconDataUrl;
 const dayjs_1 = require("dayjs");
 const jsonata = require("jsonata");
 exports.isDev = process.env.NODE_ENV === "development";
@@ -121,11 +142,9 @@ function flipStatus(s) {
     }
     return s;
 }
-exports.flipStatus = flipStatus;
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-exports.sleep = sleep;
 function ucfirst(str) {
     if (!str) {
         return str;
@@ -133,11 +152,9 @@ function ucfirst(str) {
     const firstLetter = str.substr(0, 1);
     return firstLetter.toUpperCase() + str.substr(1);
 }
-exports.ucfirst = ucfirst;
 function debug(msg) {
     exports.log.log("", "debug", msg);
 }
-exports.debug = debug;
 class Logger {
     constructor() {
         this.hideLog = {
@@ -271,13 +288,11 @@ exports.TimeLogger = TimeLogger;
 function getRandomArbitrary(min, max) {
     return Math.random() * (max - min) + min;
 }
-exports.getRandomArbitrary = getRandomArbitrary;
 function getRandomInt(min, max) {
     min = Math.ceil(min);
     max = Math.floor(max);
     return Math.floor(Math.random() * (max - min + 1)) + min;
 }
-exports.getRandomInt = getRandomInt;
 const getRandomBytes = (typeof window !== "undefined" && window.crypto
     ?
         function () {
@@ -323,7 +338,6 @@ function getCryptoRandomInt(min, max) {
         return getCryptoRandomInt(min, max);
     }
 }
-exports.getCryptoRandomInt = getCryptoRandomInt;
 function genSecret(length = 64) {
     let secret = "";
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -333,11 +347,9 @@ function genSecret(length = 64) {
     }
     return secret;
 }
-exports.genSecret = genSecret;
 function getMonitorRelativeURL(id) {
     return "/dashboard/" + id;
 }
-exports.getMonitorRelativeURL = getMonitorRelativeURL;
 function parseTimeObject(time) {
     if (!time) {
         return {
@@ -359,7 +371,6 @@ function parseTimeObject(time) {
     }
     return obj;
 }
-exports.parseTimeObject = parseTimeObject;
 function parseTimeFromTimeObject(obj) {
     if (!obj) {
         return obj;
@@ -371,23 +382,18 @@ function parseTimeFromTimeObject(obj) {
     }
     return result;
 }
-exports.parseTimeFromTimeObject = parseTimeFromTimeObject;
 function isoToUTCDateTime(input) {
     return dayjs(input).utc().format(exports.SQL_DATETIME_FORMAT);
 }
-exports.isoToUTCDateTime = isoToUTCDateTime;
 function utcToISODateTime(input) {
     return dayjs.utc(input).toISOString();
 }
-exports.utcToISODateTime = utcToISODateTime;
 function utcToLocal(input, format = exports.SQL_DATETIME_FORMAT) {
     return dayjs.utc(input).local().format(format);
 }
-exports.utcToLocal = utcToLocal;
 function localToUTC(input, format = exports.SQL_DATETIME_FORMAT) {
     return dayjs(input).utc().format(format);
 }
-exports.localToUTC = localToUTC;
 function intHash(str, length = 10) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -395,7 +401,6 @@ function intHash(str, length = 10) {
     }
     return ((hash % length) + length) % length;
 }
-exports.intHash = intHash;
 async function evaluateJsonQuery(data, jsonPath, jsonPathOperator, expectedValue) {
     let response;
     try {
@@ -460,7 +465,6 @@ async function evaluateJsonQuery(data, jsonPath, jsonPathOperator, expectedValue
         throw new Error(`Error evaluating JSON query: ${err.message}. Response from server was: ${response}`);
     }
 }
-exports.evaluateJsonQuery = evaluateJsonQuery;
 exports.TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD = {
     http: "url",
     keyword: "url",
@@ -480,3 +484,39 @@ exports.TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD = {
     "tailscale-ping": "hostname",
     "sip-options": "hostname",
 };
+exports.ACCENT_COLORS = [
+    { name: "green", label: "Green", hex: "#5cdd8b" },
+    { name: "cyan", label: "Cyan", hex: "#4dd4e0" },
+    { name: "blue", label: "Blue", hex: "#5cb3ff" },
+    { name: "violet", label: "Violet", hex: "#a98cff" },
+    { name: "magenta", label: "Magenta", hex: "#ff7ad9" },
+    { name: "pink", label: "Pink", hex: "#ff6b9d" },
+    { name: "red", label: "Red", hex: "#ff6b6b" },
+    { name: "orange", label: "Orange", hex: "#ff9f5c" },
+    { name: "amber", label: "Amber", hex: "#ffc65c" },
+    { name: "lime", label: "Lime", hex: "#b6e35c" },
+];
+exports.DEFAULT_ACCENT = "green";
+function accentHex(name) {
+    const found = exports.ACCENT_COLORS.find((accent) => accent.name === name);
+    return (found || exports.ACCENT_COLORS[0]).hex;
+}
+function isAccent(name) {
+    return typeof name === "string" && exports.ACCENT_COLORS.some((accent) => accent.name === name);
+}
+function lighten(hex, amount) {
+    const channel = (i) => {
+        const value = parseInt(hex.slice(i, i + 2), 16);
+        const mixed = Math.round(value + (255 - value) * amount);
+        return mixed.toString(16).padStart(2, "0");
+    };
+    return `#${channel(1)}${channel(3)}${channel(5)}`;
+}
+exports.ICON_COLORS = { base: "#5CDD8B",
+    light: "#86E6A9" };
+function iconDataUrl(svg, hex) {
+    const recoloured = svg
+        .split(exports.ICON_COLORS.base).join(hex)
+        .split(exports.ICON_COLORS.light).join(lighten(hex, 0.28));
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(recoloured)}`;
+}

@@ -15,7 +15,7 @@
             </div>
 
             <!-- Server Timezone -->
-            <div class="mb-4">
+            <div v-if="$root.isAdmin" class="mb-4">
                 <label for="timezone" class="form-label">
                     {{ $t("Server Timezone") }}
                 </label>
@@ -64,7 +64,7 @@
             </div>
 
             <!-- Entry Page -->
-            <div class="mb-4">
+            <div v-if="$root.isAdmin" class="mb-4">
                 <label class="form-label">{{ $t("Entry Page") }}</label>
 
                 <div class="form-check">
@@ -98,8 +98,49 @@
                 </div>
             </div>
 
-            <!-- Primary Base URL -->
+            <!-- Landing Page -->
             <div class="mb-4">
+                <label class="form-label">Landing Page</label>
+                <div class="form-text mb-2">
+                    Where you are taken after logging in. This is yours alone
+                    <span v-if="$root.isAdmin">
+                        &mdash; the Entry Page above is what anonymous visitors arriving at the root see.
+                    </span>
+                </div>
+
+                <div class="form-check">
+                    <input
+                        id="landingPageDashboard"
+                        v-model="settings.landingPage"
+                        class="form-check-input"
+                        type="radio"
+                        name="landingPage"
+                        value="dashboard"
+                        required
+                    />
+                    <label class="form-check-label" for="landingPageDashboard">
+                        {{ $t("Dashboard") }}
+                    </label>
+                </div>
+
+                <div v-for="statusPage in $root.statusPageList" :key="statusPage.id" class="form-check">
+                    <input
+                        :id="'landing-page-' + statusPage.id"
+                        v-model="settings.landingPage"
+                        class="form-check-input"
+                        type="radio"
+                        name="landingPage"
+                        :value="'statusPage-' + statusPage.slug"
+                        required
+                    />
+                    <label class="form-check-label" :for="'landing-page-' + statusPage.id">
+                        {{ $t("Status Page") }} - {{ statusPage.title }}
+                    </label>
+                </div>
+            </div>
+
+            <!-- Primary Base URL -->
+            <div v-if="$root.isAdmin" class="mb-4">
                 <label class="form-label" for="primaryBaseURL">
                     {{ $t("Primary Base URL") }}
                 </label>
@@ -151,7 +192,7 @@
             </div>
 
             <!-- DNS Cache (nscd) -->
-            <div v-if="$root.info.isContainer" class="mb-4">
+            <div v-if="$root.info.isContainer && $root.isAdmin" class="mb-4">
                 <label class="form-label">
                     {{ $t("enableNSCD") }}
                 </label>
@@ -188,7 +229,7 @@
             </div>
 
             <!-- Chrome Executable -->
-            <div class="mb-4">
+            <div v-if="$root.isAdmin" class="mb-4">
                 <label class="form-label" for="primaryBaseURL">
                     {{ $t("chromeExecutable") }}
                 </label>

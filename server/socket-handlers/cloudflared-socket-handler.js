@@ -72,10 +72,7 @@ module.exports.cloudflaredSocketHandler = (socket) => {
     socket.on(prefix + "stop", async (currentPassword, callback) => {
         try {
             checkLogin(socket);
-            const disabledAuth = await setting("disableAuth");
-            if (!disabledAuth) {
-                await doubleCheckPassword(socket, currentPassword);
-            }
+            await doubleCheckPassword(socket, currentPassword);
             cloudflared.stop();
         } catch (error) {
             callback({
